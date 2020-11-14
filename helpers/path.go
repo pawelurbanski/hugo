@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -243,11 +244,17 @@ func FileAndExtNoDelimiter(in string) (string, string) {
 	return file, strings.TrimPrefix(ext, ".")
 }
 
-// Filename takes a path, strips out the extension,
+// Filename takes a file path, strips out the extension,
 // and returns the name of the file.
 func Filename(in string) (name string) {
 	name, _ = fileAndExt(in, fpb)
 	return
+}
+
+// PathNoExt takes a path, strips out the extension,
+// and returns the name of the file.
+func PathNoExt(in string) string {
+	return strings.TrimSuffix(in, path.Ext(in))
 }
 
 // FileAndExt returns the filename and any extension of a file path as
@@ -657,4 +664,13 @@ func FileContainsAny(filename string, subslices [][]byte, fs afero.Fs) (bool, er
 // Exists checks if a file or directory exists.
 func Exists(path string, fs afero.Fs) (bool, error) {
 	return afero.Exists(fs, path)
+}
+
+// AddTrailingSlash adds a trailing Unix styled slash (/) if not already
+// there.
+func AddTrailingSlash(path string) string {
+	if !strings.HasSuffix(path, "/") {
+		path += "/"
+	}
+	return path
 }

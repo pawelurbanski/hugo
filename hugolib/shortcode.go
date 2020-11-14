@@ -176,7 +176,8 @@ type shortcode struct {
 	ordinal   int
 	err       error
 
-	info tpl.Info
+	info   tpl.Info       // One of the output formats (arbitrary)
+	templs []tpl.Template // All output formats
 
 	// If set, the rendered shortcode is sent as part of the surrounding content
 	// to Blackfriday and similar.
@@ -303,7 +304,7 @@ func renderShortcode(
 			templStr := sc.innerString()
 
 			var err error
-			tmpl, err = s.TextTmpl.Parse(templName, templStr)
+			tmpl, err = s.TextTmpl().Parse(templName, templStr)
 			if err != nil {
 				fe := herrors.ToFileError("html", err)
 				l1, l2 := p.posOffset(sc.pos).LineNumber, fe.Position().LineNumber
@@ -314,16 +315,16 @@ func renderShortcode(
 		} else {
 			// Re-use of shortcode defined earlier in the same page.
 			var found bool
-			tmpl, found = s.TextTmpl.Lookup(templName)
+			tmpl, found = s.TextTmpl().Lookup(templName)
 			if !found {
 				return "", false, _errors.Errorf("no earlier definition of shortcode %q found", sc.name)
 			}
 		}
 	} else {
 		var found, more bool
-		tmpl, found, more = s.Tmpl.LookupVariant(sc.name, tplVariants)
+		tmpl, found, more = s.Tmpl().LookupVariant(sc.name, tplVariants)
 		if !found {
-			s.Log.ERROR.Printf("Unable to locate template for shortcode %q in page %q", sc.name, p.File().Path())
+			s.Log.Errorf("Unable to locate template for shortcode %q in page %q", sc.name, p.File().Path())
 			return "", false, nil
 		}
 		hasVariants = hasVariants || more
@@ -348,7 +349,7 @@ func renderShortcode(
 				hasVariants = hasVariants || more
 				inner += s
 			default:
-				s.Log.ERROR.Printf("Illegal state on shortcode rendering of %q in page %q. Illegal type in inner data: %s ",
+				s.Log.Errorf("Illegal state on shortcode rendering of %q in page %q. Illegal type in inner data: %s ",
 					sc.name, p.File().Path(), reflect.TypeOf(innerData))
 				return "", false, nil
 			}
@@ -395,7 +396,7 @@ func renderShortcode(
 
 	}
 
-	result, err := renderShortcodeWithPage(s.Tmpl, tmpl, data)
+	result, err := renderShortcodeWithPage(s.Tmpl(), tmpl, data)
 
 	if err != nil && sc.isInline {
 		fe := herrors.ToFileError("html", err)
@@ -408,7 +409,7 @@ func renderShortcode(
 }
 
 func (s *shortcodeHandler) hasShortcodes() bool {
-	return len(s.shortcodes) > 0
+	return s != nil && len(s.shortcodes) > 0
 }
 
 func (s *shortcodeHandler) renderShortcodesForPage(p *pageState, f output.Format) (map[string]string, bool, error) {
@@ -496,19 +497,26 @@ Loop:
 		case currItem.IsRightShortcodeDelim():
 			// we trust the template on this:
 			// if there's no inner, we're done
-			if !sc.isInline && !sc.info.ParseInfo().IsInner {
-				return sc, nil
+			if !sc.isInline {
+				if sc.info == nil {
+					// This should not happen.
+					return sc, fail(errors.New("BUG: template info not set"), currItem)
+				}
+				if !sc.info.ParseInfo().IsInner {
+					return sc, nil
+				}
 			}
 
 		case currItem.IsShortcodeClose():
 			next := pt.Peek()
-			if !sc.isInline && !sc.info.ParseInfo().IsInner {
-				if next.IsError() {
-					// return that error, more specific
-					continue
+			if !sc.isInline {
+				if sc.info == nil || !sc.info.ParseInfo().IsInner {
+					if next.IsError() {
+						// return that error, more specific
+						continue
+					}
+					return sc, fail(_errors.Errorf("shortcode %q has no .Inner, yet a closing tag was provided", next.Val), next)
 				}
-
-				return sc, fail(_errors.Errorf("shortcode %q has no .Inner, yet a closing tag was provided", next.Val), next)
 			}
 			if next.IsRightShortcodeDelim() {
 				// self-closing
@@ -534,15 +542,14 @@ Loop:
 
 			sc.name = currItem.ValStr()
 
-			// Check if the template expects inner content.
-			// We pick the first template for an arbitrary output format
-			// if more than one. It is "all inner or no inner".
-			tmpl, found, _ := s.s.Tmpl.LookupVariant(sc.name, tpl.TemplateVariants{})
-			if !found {
+			// Used to check if the template expects inner content.
+			templs := s.s.Tmpl().LookupVariants(sc.name)
+			if templs == nil {
 				return nil, _errors.Errorf("template for shortcode %q not found", sc.name)
 			}
 
-			sc.info = tmpl.(tpl.Info)
+			sc.info = templs[0].(tpl.Info)
+			sc.templs = templs
 		case currItem.IsInlineShortcodeName():
 			sc.name = currItem.ValStr()
 			sc.isInline = true

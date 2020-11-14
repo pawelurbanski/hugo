@@ -18,6 +18,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gobwas/glob"
+	hglob "github.com/gohugoio/hugo/hugofs/glob"
+
 	"github.com/gohugoio/hugo/common/loggers"
 
 	"github.com/gohugoio/hugo/cache/filecache"
@@ -71,7 +74,7 @@ func loadSiteConfig(cfg config.Provider) (scfg SiteConfig, err error) {
 // ConfigSourceDescriptor describes where to find the config (e.g. config.toml etc.).
 type ConfigSourceDescriptor struct {
 	Fs     afero.Fs
-	Logger *loggers.Logger
+	Logger loggers.Logger
 
 	// Path to the config file to use, e.g. /my/project/config.toml
 	Filename string
@@ -195,11 +198,19 @@ func LoadConfig(d ConfigSourceDescriptor, doWithConfig ...func(cfg config.Provid
 					} else {
 						v.Set(key, val)
 					}
+				} else if nestedKey != "" {
+					owner[nestedKey] = valStr
 				} else {
 					v.Set(key, valStr)
 				}
 			}
 		}
+	}
+
+	// We made this a Glob pattern in Hugo 0.75, we don't need both.
+	if v.GetBool("ignoreVendor") {
+		helpers.Deprecated("--ignoreVendor", "--ignoreVendorPaths **", false)
+		v.Set("ignoreVendorPaths", "**")
 	}
 
 	modulesConfig, err := l.loadModulesConfig(v)
@@ -225,15 +236,12 @@ func LoadConfig(d ConfigSourceDescriptor, doWithConfig ...func(cfg config.Provid
 	}
 
 	_, modulesConfigFiles, err := l.collectModules(modulesConfig, v, collectHook)
-	if err != nil {
-		return v, configFiles, err
-	}
 
-	if len(modulesConfigFiles) > 0 {
+	if err == nil && len(modulesConfigFiles) > 0 {
 		configFiles = append(configFiles, modulesConfigFiles...)
 	}
 
-	return v, configFiles, nil
+	return v, configFiles, err
 
 }
 
@@ -420,7 +428,10 @@ func (l configLoader) collectModules(modConfig modules.Config, v1 *viper.Viper, 
 
 	themesDir := paths.AbsPathify(l.WorkingDir, v1.GetString("themesDir"))
 
-	ignoreVendor := v1.GetBool("ignoreVendor")
+	var ignoreVendor glob.Glob
+	if s := v1.GetString("ignoreVendorPaths"); s != "" {
+		ignoreVendor, _ = hglob.GetGlob(hglob.NormalizePath(s))
+	}
 
 	filecacheConfigs, err := filecache.DecodeConfig(l.Fs, v1)
 	if err != nil {
@@ -465,9 +476,6 @@ func (l configLoader) collectModules(modConfig modules.Config, v1 *viper.Viper, 
 	v1.Set("modulesClient", modulesClient)
 
 	moduleConfig, err := modulesClient.Collect()
-	if err != nil {
-		return nil, nil, err
-	}
 
 	// Avoid recreating these later.
 	v1.Set("allModules", moduleConfig.ActiveModules)
@@ -478,7 +486,7 @@ func (l configLoader) collectModules(modConfig modules.Config, v1 *viper.Viper, 
 		configFilenames = append(configFilenames, moduleConfig.GoModulesFilename)
 	}
 
-	return moduleConfig.ActiveModules, configFilenames, nil
+	return moduleConfig.ActiveModules, configFilenames, err
 
 }
 

@@ -231,6 +231,21 @@
         ]
       },
       {
+        "Name": "Caddyfile",
+        "Aliases": [
+          "caddy",
+          "caddyfile"
+        ]
+      },
+      {
+        "Name": "Caddyfile Directives",
+        "Aliases": [
+          "caddy-d",
+          "caddyfile-d",
+          "caddyfile-directives"
+        ]
+      },
+      {
         "Name": "Cap'n Proto",
         "Aliases": [
           "capnp"
@@ -481,6 +496,17 @@
         ]
       },
       {
+        "Name": "Gherkin",
+        "Aliases": [
+          "Cucumber",
+          "FEATURE",
+          "Gherkin",
+          "cucumber",
+          "feature",
+          "gherkin"
+        ]
+      },
+      {
         "Name": "Gnuplot",
         "Aliases": [
           "gnuplot",
@@ -526,6 +552,12 @@
         "Name": "HCL",
         "Aliases": [
           "hcl"
+        ]
+      },
+      {
+        "Name": "HLB",
+        "Aliases": [
+          "hlb"
         ]
       },
       {
@@ -582,6 +614,7 @@
         "Aliases": [
           "cfg",
           "dosini",
+          "editorconfig",
           "gitconfig",
           "inf",
           "ini"
@@ -674,6 +707,12 @@
         "Aliases": [
           "lua",
           "wlua"
+        ]
+      },
+      {
+        "Name": "MLIR",
+        "Aliases": [
+          "mlir"
         ]
       },
       {
@@ -848,6 +887,12 @@
         ]
       },
       {
+        "Name": "PHTML",
+        "Aliases": [
+          "phtml"
+        ]
+      },
+      {
         "Name": "PL/pgSQL",
         "Aliases": [
           "plpgsql"
@@ -887,6 +932,12 @@
         "Aliases": [
           "pc",
           "pkgconfig"
+        ]
+      },
+      {
+        "Name": "Pony",
+        "Aliases": [
+          "pony"
         ]
       },
       {
@@ -993,6 +1044,15 @@
         ]
       },
       {
+        "Name": "ReasonML",
+        "Aliases": [
+          "re",
+          "reason",
+          "reasonml",
+          "rei"
+        ]
+      },
+      {
         "Name": "Rexx",
         "Aliases": [
           "arexx",
@@ -1019,6 +1079,13 @@
           "in",
           "rs",
           "rust"
+        ]
+      },
+      {
+        "Name": "SAS",
+        "Aliases": [
+          "SAS",
+          "sas"
         ]
       },
       {
@@ -1114,6 +1181,14 @@
         ]
       },
       {
+        "Name": "Standard ML",
+        "Aliases": [
+          "fun",
+          "sig",
+          "sml"
+        ]
+      },
+      {
         "Name": "Swift",
         "Aliases": [
           "swift"
@@ -1131,6 +1206,13 @@
         "Name": "TOML",
         "Aliases": [
           "toml"
+        ]
+      },
+      {
+        "Name": "TableGen",
+        "Aliases": [
+          "tablegen",
+          "td"
         ]
       },
       {
@@ -1229,7 +1311,6 @@
         "Name": "TypoScript",
         "Aliases": [
           "ts",
-          "txt",
           "typoscript"
         ]
       },
@@ -1301,6 +1382,18 @@
         "Aliases": [
           "yaml",
           "yml"
+        ]
+      },
+      {
+        "Name": "YANG",
+        "Aliases": [
+          "yang"
+        ]
+      },
+      {
+        "Name": "Zig",
+        "Aliases": [
+          "zig"
         ]
       },
       {
@@ -1381,6 +1474,8 @@
         "noClasses": true,
         "lineNos": false,
         "lineNumbersInTable": true,
+        "anchorLineNos": false,
+        "lineAnchors": "",
         "lineNoStart": 1,
         "hl_Lines": "",
         "tabWidth": 4,
@@ -1394,7 +1489,7 @@
       "goldmark": {
         "renderer": {
           "hardWraps": false,
-          "xHTML": false,
+          "xhtml": false,
           "unsafe": false
         },
         "parser": {
@@ -1429,6 +1524,50 @@
         "skipHTML": false,
         "footnoteAnchorPrefix": "",
         "footnoteReturnLinkContents": ""
+      },
+      "asciidocExt": {
+        "backend": "html5",
+        "extensions": [],
+        "attributes": {},
+        "noHeaderOrFooter": true,
+        "safeMode": "unsafe",
+        "sectionNumbers": false,
+        "verbose": false,
+        "trace": false,
+        "failureLevel": "fatal",
+        "workingFolderCurrent": false,
+        "preserveTOC": false
+      }
+    },
+    "minify": {
+      "minifyOutput": false,
+      "disableHTML": false,
+      "disableCSS": false,
+      "disableJS": false,
+      "disableJSON": false,
+      "disableSVG": false,
+      "disableXML": false,
+      "tdewolff": {
+        "html": {
+          "keepConditionalComments": true,
+          "keepDefaultAttrVals": true,
+          "keepDocumentTags": true,
+          "keepEndTags": true,
+          "keepQuotes": false,
+          "keepWhitespace": false
+        },
+        "css": {
+          "decimals": -1,
+          "keepCSS2": true
+        },
+        "js": {},
+        "json": {},
+        "svg": {
+          "decimals": -1
+        },
+        "xml": {
+          "keepWhitespace": false
+        }
       }
     }
   },
@@ -1480,6 +1619,16 @@
         "delimiter": ".",
         "suffixes": [
           "toml"
+        ]
+      },
+      {
+        "type": "application/typescript",
+        "string": "application/typescript",
+        "mainType": "application",
+        "subType": "typescript",
+        "delimiter": ".",
+        "suffixes": [
+          "ts"
         ]
       },
       {
@@ -1575,6 +1724,16 @@
         ]
       },
       {
+        "type": "text/jsx",
+        "string": "text/jsx",
+        "mainType": "text",
+        "subType": "jsx",
+        "delimiter": ".",
+        "suffixes": [
+          "jsx"
+        ]
+      },
+      {
         "type": "text/plain",
         "string": "text/plain",
         "mainType": "text",
@@ -1582,6 +1741,16 @@
         "delimiter": ".",
         "suffixes": [
           "txt"
+        ]
+      },
+      {
+        "type": "text/tsx",
+        "string": "text/tsx",
+        "mainType": "text",
+        "subType": "tsx",
+        "delimiter": ".",
+        "suffixes": [
+          "tsx"
         ]
       },
       {
@@ -1901,6 +2070,22 @@
         ]
       },
       {
+        "Example": "Base template for single page in \"posts\" section",
+        "Kind": "page",
+        "OutputFormat": "HTML",
+        "Suffix": "html",
+        "Template Lookup Order": [
+          "layouts/posts/single-baseof.html.html",
+          "layouts/posts/baseof.html.html",
+          "layouts/posts/single-baseof.html",
+          "layouts/posts/baseof.html",
+          "layouts/_default/single-baseof.html.html",
+          "layouts/_default/baseof.html.html",
+          "layouts/_default/single-baseof.html",
+          "layouts/_default/baseof.html"
+        ]
+      },
+      {
         "Example": "Single page in \"posts\" section with layout set",
         "Kind": "page",
         "OutputFormat": "HTML",
@@ -1914,6 +2099,26 @@
           "layouts/_default/single.html.html",
           "layouts/_default/demolayout.html",
           "layouts/_default/single.html"
+        ]
+      },
+      {
+        "Example": "Base template for single page in \"posts\" section with layout set",
+        "Kind": "page",
+        "OutputFormat": "HTML",
+        "Suffix": "html",
+        "Template Lookup Order": [
+          "layouts/posts/demolayout-baseof.html.html",
+          "layouts/posts/single-baseof.html.html",
+          "layouts/posts/baseof.html.html",
+          "layouts/posts/demolayout-baseof.html",
+          "layouts/posts/single-baseof.html",
+          "layouts/posts/baseof.html",
+          "layouts/_default/demolayout-baseof.html.html",
+          "layouts/_default/single-baseof.html.html",
+          "layouts/_default/baseof.html.html",
+          "layouts/_default/demolayout-baseof.html",
+          "layouts/_default/single-baseof.html",
+          "layouts/_default/baseof.html"
         ]
       },
       {
@@ -1965,6 +2170,30 @@
         ]
       },
       {
+        "Example": "Base template for home page",
+        "Kind": "home",
+        "OutputFormat": "HTML",
+        "Suffix": "html",
+        "Template Lookup Order": [
+          "layouts/index-baseof.html.html",
+          "layouts/home-baseof.html.html",
+          "layouts/list-baseof.html.html",
+          "layouts/baseof.html.html",
+          "layouts/index-baseof.html",
+          "layouts/home-baseof.html",
+          "layouts/list-baseof.html",
+          "layouts/baseof.html",
+          "layouts/_default/index-baseof.html.html",
+          "layouts/_default/home-baseof.html.html",
+          "layouts/_default/list-baseof.html.html",
+          "layouts/_default/baseof.html.html",
+          "layouts/_default/index-baseof.html",
+          "layouts/_default/home-baseof.html",
+          "layouts/_default/list-baseof.html",
+          "layouts/_default/baseof.html"
+        ]
+      },
+      {
         "Example": "Home page with type set",
         "Kind": "home",
         "OutputFormat": "HTML",
@@ -1988,6 +2217,38 @@
           "layouts/_default/index.html",
           "layouts/_default/home.html",
           "layouts/_default/list.html"
+        ]
+      },
+      {
+        "Example": "Base template for home page with type set",
+        "Kind": "home",
+        "OutputFormat": "HTML",
+        "Suffix": "html",
+        "Template Lookup Order": [
+          "layouts/demotype/index-baseof.html.html",
+          "layouts/demotype/home-baseof.html.html",
+          "layouts/demotype/list-baseof.html.html",
+          "layouts/demotype/baseof.html.html",
+          "layouts/demotype/index-baseof.html",
+          "layouts/demotype/home-baseof.html",
+          "layouts/demotype/list-baseof.html",
+          "layouts/demotype/baseof.html",
+          "layouts/index-baseof.html.html",
+          "layouts/home-baseof.html.html",
+          "layouts/list-baseof.html.html",
+          "layouts/baseof.html.html",
+          "layouts/index-baseof.html",
+          "layouts/home-baseof.html",
+          "layouts/list-baseof.html",
+          "layouts/baseof.html",
+          "layouts/_default/index-baseof.html.html",
+          "layouts/_default/home-baseof.html.html",
+          "layouts/_default/list-baseof.html.html",
+          "layouts/_default/baseof.html.html",
+          "layouts/_default/index-baseof.html",
+          "layouts/_default/home-baseof.html",
+          "layouts/_default/list-baseof.html",
+          "layouts/_default/baseof.html"
         ]
       },
       {
@@ -2114,75 +2375,100 @@
         ]
       },
       {
-        "Example": "Taxonomy list in categories",
+        "Example": "Taxonomy in categories",
         "Kind": "taxonomy",
         "OutputFormat": "RSS",
         "Suffix": "xml",
         "Template Lookup Order": [
-          "layouts/categories/category.rss.xml",
+          "layouts/categories/category.terms.rss.xml",
+          "layouts/categories/terms.rss.xml",
           "layouts/categories/taxonomy.rss.xml",
           "layouts/categories/rss.xml",
           "layouts/categories/list.rss.xml",
-          "layouts/categories/category.xml",
+          "layouts/categories/category.terms.xml",
+          "layouts/categories/terms.xml",
           "layouts/categories/taxonomy.xml",
           "layouts/categories/list.xml",
-          "layouts/taxonomy/category.rss.xml",
-          "layouts/taxonomy/taxonomy.rss.xml",
-          "layouts/taxonomy/rss.xml",
-          "layouts/taxonomy/list.rss.xml",
-          "layouts/taxonomy/category.xml",
-          "layouts/taxonomy/taxonomy.xml",
-          "layouts/taxonomy/list.xml",
-          "layouts/category/category.rss.xml",
+          "layouts/category/category.terms.rss.xml",
+          "layouts/category/terms.rss.xml",
           "layouts/category/taxonomy.rss.xml",
           "layouts/category/rss.xml",
           "layouts/category/list.rss.xml",
-          "layouts/category/category.xml",
+          "layouts/category/category.terms.xml",
+          "layouts/category/terms.xml",
           "layouts/category/taxonomy.xml",
           "layouts/category/list.xml",
-          "layouts/_default/category.rss.xml",
+          "layouts/taxonomy/category.terms.rss.xml",
+          "layouts/taxonomy/terms.rss.xml",
+          "layouts/taxonomy/taxonomy.rss.xml",
+          "layouts/taxonomy/rss.xml",
+          "layouts/taxonomy/list.rss.xml",
+          "layouts/taxonomy/category.terms.xml",
+          "layouts/taxonomy/terms.xml",
+          "layouts/taxonomy/taxonomy.xml",
+          "layouts/taxonomy/list.xml",
+          "layouts/_default/category.terms.rss.xml",
+          "layouts/_default/terms.rss.xml",
           "layouts/_default/taxonomy.rss.xml",
           "layouts/_default/rss.xml",
           "layouts/_default/list.rss.xml",
-          "layouts/_default/category.xml",
+          "layouts/_default/category.terms.xml",
+          "layouts/_default/terms.xml",
           "layouts/_default/taxonomy.xml",
           "layouts/_default/list.xml",
           "layouts/_internal/_default/rss.xml"
         ]
       },
       {
-        "Example": "Taxonomy terms in categories",
-        "Kind": "taxonomyTerm",
+        "Example": "Term in categories",
+        "Kind": "term",
         "OutputFormat": "RSS",
         "Suffix": "xml",
         "Template Lookup Order": [
-          "layouts/categories/category.terms.rss.xml",
-          "layouts/categories/terms.rss.xml",
+          "layouts/categories/term.rss.xml",
+          "layouts/categories/category.rss.xml",
+          "layouts/categories/taxonomy.rss.xml",
           "layouts/categories/rss.xml",
           "layouts/categories/list.rss.xml",
-          "layouts/categories/category.terms.xml",
-          "layouts/categories/terms.xml",
+          "layouts/categories/term.xml",
+          "layouts/categories/category.xml",
+          "layouts/categories/taxonomy.xml",
           "layouts/categories/list.xml",
-          "layouts/taxonomy/category.terms.rss.xml",
-          "layouts/taxonomy/terms.rss.xml",
+          "layouts/term/term.rss.xml",
+          "layouts/term/category.rss.xml",
+          "layouts/term/taxonomy.rss.xml",
+          "layouts/term/rss.xml",
+          "layouts/term/list.rss.xml",
+          "layouts/term/term.xml",
+          "layouts/term/category.xml",
+          "layouts/term/taxonomy.xml",
+          "layouts/term/list.xml",
+          "layouts/taxonomy/term.rss.xml",
+          "layouts/taxonomy/category.rss.xml",
+          "layouts/taxonomy/taxonomy.rss.xml",
           "layouts/taxonomy/rss.xml",
           "layouts/taxonomy/list.rss.xml",
-          "layouts/taxonomy/category.terms.xml",
-          "layouts/taxonomy/terms.xml",
+          "layouts/taxonomy/term.xml",
+          "layouts/taxonomy/category.xml",
+          "layouts/taxonomy/taxonomy.xml",
           "layouts/taxonomy/list.xml",
-          "layouts/category/category.terms.rss.xml",
-          "layouts/category/terms.rss.xml",
+          "layouts/category/term.rss.xml",
+          "layouts/category/category.rss.xml",
+          "layouts/category/taxonomy.rss.xml",
           "layouts/category/rss.xml",
           "layouts/category/list.rss.xml",
-          "layouts/category/category.terms.xml",
-          "layouts/category/terms.xml",
+          "layouts/category/term.xml",
+          "layouts/category/category.xml",
+          "layouts/category/taxonomy.xml",
           "layouts/category/list.xml",
-          "layouts/_default/category.terms.rss.xml",
-          "layouts/_default/terms.rss.xml",
+          "layouts/_default/term.rss.xml",
+          "layouts/_default/category.rss.xml",
+          "layouts/_default/taxonomy.rss.xml",
           "layouts/_default/rss.xml",
           "layouts/_default/list.rss.xml",
-          "layouts/_default/category.terms.xml",
-          "layouts/_default/terms.xml",
+          "layouts/_default/term.xml",
+          "layouts/_default/category.xml",
+          "layouts/_default/taxonomy.xml",
           "layouts/_default/list.xml",
           "layouts/_internal/_default/rss.xml"
         ]
@@ -2283,61 +2569,85 @@
         "OutputFormat": "HTML",
         "Suffix": "html",
         "Template Lookup Order": [
-          "layouts/categories/category.html.html",
+          "layouts/categories/category.terms.html.html",
+          "layouts/categories/terms.html.html",
           "layouts/categories/taxonomy.html.html",
           "layouts/categories/list.html.html",
-          "layouts/categories/category.html",
+          "layouts/categories/category.terms.html",
+          "layouts/categories/terms.html",
           "layouts/categories/taxonomy.html",
           "layouts/categories/list.html",
-          "layouts/taxonomy/category.html.html",
-          "layouts/taxonomy/taxonomy.html.html",
-          "layouts/taxonomy/list.html.html",
-          "layouts/taxonomy/category.html",
-          "layouts/taxonomy/taxonomy.html",
-          "layouts/taxonomy/list.html",
-          "layouts/category/category.html.html",
+          "layouts/category/category.terms.html.html",
+          "layouts/category/terms.html.html",
           "layouts/category/taxonomy.html.html",
           "layouts/category/list.html.html",
-          "layouts/category/category.html",
+          "layouts/category/category.terms.html",
+          "layouts/category/terms.html",
           "layouts/category/taxonomy.html",
           "layouts/category/list.html",
-          "layouts/_default/category.html.html",
+          "layouts/taxonomy/category.terms.html.html",
+          "layouts/taxonomy/terms.html.html",
+          "layouts/taxonomy/taxonomy.html.html",
+          "layouts/taxonomy/list.html.html",
+          "layouts/taxonomy/category.terms.html",
+          "layouts/taxonomy/terms.html",
+          "layouts/taxonomy/taxonomy.html",
+          "layouts/taxonomy/list.html",
+          "layouts/_default/category.terms.html.html",
+          "layouts/_default/terms.html.html",
           "layouts/_default/taxonomy.html.html",
           "layouts/_default/list.html.html",
-          "layouts/_default/category.html",
+          "layouts/_default/category.terms.html",
+          "layouts/_default/terms.html",
           "layouts/_default/taxonomy.html",
           "layouts/_default/list.html"
         ]
       },
       {
         "Example": "Taxonomy term in categories",
-        "Kind": "taxonomyTerm",
+        "Kind": "term",
         "OutputFormat": "HTML",
         "Suffix": "html",
         "Template Lookup Order": [
-          "layouts/categories/category.terms.html.html",
-          "layouts/categories/terms.html.html",
+          "layouts/categories/term.html.html",
+          "layouts/categories/category.html.html",
+          "layouts/categories/taxonomy.html.html",
           "layouts/categories/list.html.html",
-          "layouts/categories/category.terms.html",
-          "layouts/categories/terms.html",
+          "layouts/categories/term.html",
+          "layouts/categories/category.html",
+          "layouts/categories/taxonomy.html",
           "layouts/categories/list.html",
-          "layouts/taxonomy/category.terms.html.html",
-          "layouts/taxonomy/terms.html.html",
+          "layouts/term/term.html.html",
+          "layouts/term/category.html.html",
+          "layouts/term/taxonomy.html.html",
+          "layouts/term/list.html.html",
+          "layouts/term/term.html",
+          "layouts/term/category.html",
+          "layouts/term/taxonomy.html",
+          "layouts/term/list.html",
+          "layouts/taxonomy/term.html.html",
+          "layouts/taxonomy/category.html.html",
+          "layouts/taxonomy/taxonomy.html.html",
           "layouts/taxonomy/list.html.html",
-          "layouts/taxonomy/category.terms.html",
-          "layouts/taxonomy/terms.html",
+          "layouts/taxonomy/term.html",
+          "layouts/taxonomy/category.html",
+          "layouts/taxonomy/taxonomy.html",
           "layouts/taxonomy/list.html",
-          "layouts/category/category.terms.html.html",
-          "layouts/category/terms.html.html",
+          "layouts/category/term.html.html",
+          "layouts/category/category.html.html",
+          "layouts/category/taxonomy.html.html",
           "layouts/category/list.html.html",
-          "layouts/category/category.terms.html",
-          "layouts/category/terms.html",
+          "layouts/category/term.html",
+          "layouts/category/category.html",
+          "layouts/category/taxonomy.html",
           "layouts/category/list.html",
-          "layouts/_default/category.terms.html.html",
-          "layouts/_default/terms.html.html",
+          "layouts/_default/term.html.html",
+          "layouts/_default/category.html.html",
+          "layouts/_default/taxonomy.html.html",
           "layouts/_default/list.html.html",
-          "layouts/_default/category.terms.html",
-          "layouts/_default/terms.html",
+          "layouts/_default/term.html",
+          "layouts/_default/category.html",
+          "layouts/_default/taxonomy.html",
           "layouts/_default/list.html"
         ]
       }
@@ -2447,10 +2757,10 @@
           ]
         },
         "Ge": {
-          "Description": "Ge returns the boolean truth of arg1 \u003e= arg2.",
+          "Description": "Ge returns the boolean truth of arg1 \u003e= arg2 \u0026\u0026 arg1 \u003e= arg3 \u0026\u0026 arg1 \u003e= arg4.",
           "Args": [
-            "a",
-            "b"
+            "first",
+            "others"
           ],
           "Aliases": [
             "ge"
@@ -2463,10 +2773,10 @@
           ]
         },
         "Gt": {
-          "Description": "Gt returns the boolean truth of arg1 \u003e arg2.",
+          "Description": "Gt returns the boolean truth of arg1 \u003e arg2 \u0026\u0026 arg1 \u003e arg3 \u0026\u0026 arg1 \u003e arg4.",
           "Args": [
-            "a",
-            "b"
+            "first",
+            "others"
           ],
           "Aliases": [
             "gt"
@@ -2474,10 +2784,10 @@
           "Examples": []
         },
         "Le": {
-          "Description": "Le returns the boolean truth of arg1 \u003c= arg2.",
+          "Description": "Le returns the boolean truth of arg1 \u003c= arg2 \u0026\u0026 arg1 \u003c= arg3 \u0026\u0026 arg1 \u003c= arg4.",
           "Args": [
-            "a",
-            "b"
+            "first",
+            "others"
           ],
           "Aliases": [
             "le"
@@ -2485,10 +2795,10 @@
           "Examples": []
         },
         "Lt": {
-          "Description": "Lt returns the boolean truth of arg1 \u003c arg2.",
+          "Description": "Lt returns the boolean truth of arg1 \u003c arg2 \u0026\u0026 arg1 \u003c arg3 \u0026\u0026 arg1 \u003c arg4.",
           "Args": [
-            "a",
-            "b"
+            "first",
+            "others"
           ],
           "Aliases": [
             "lt"
@@ -2496,10 +2806,10 @@
           "Examples": []
         },
         "Ne": {
-          "Description": "Ne returns the boolean truth of arg1 != arg2.",
+          "Description": "Ne returns the boolean truth of arg1 != arg2 \u0026\u0026 arg1 != arg3 \u0026\u0026 arg1 != arg4.",
           "Args": [
-            "x",
-            "y"
+            "first",
+            "others"
           ],
           "Aliases": [
             "ne"
@@ -2699,10 +3009,9 @@
           "Examples": []
         },
         "Merge": {
-          "Description": "Merge creates a copy of dst and merges src into it.\nCurrently only maps supported. Key handling is case insensitive.",
+          "Description": "Merge creates a copy of the final parameter and merges the preceeding\nparameters into it in reverse order.\nCurrently only maps are supported. Key handling is case insensitive.",
           "Args": [
-            "src",
-            "dst"
+            "params"
           ],
           "Aliases": [
             "merge"
@@ -2715,6 +3024,10 @@
             [
               "{{  merge (dict \"title\" \"Default Title\" \"description\" \"Yes, Hugo Rocks!\") (dict \"title\" \"Hugo Rocks!\") | sort }}",
               "[Yes, Hugo Rocks! Hugo Rocks!]"
+            ],
+            [
+              "{{  merge (dict \"title\" \"Default Title\" \"description\" \"Yes, Hugo Rocks!\") (dict \"title\" \"Hugo Rocks!\") (dict \"extra\" \"For reals!\") | sort }}",
+              "[Yes, Hugo Rocks! For reals! Hugo Rocks!]"
             ]
           ]
         },
@@ -2868,6 +3181,23 @@
         }
       },
       "crypto": {
+        "HMAC": {
+          "Description": "HMAC returns a cryptographic hash that uses a key to sign a message.",
+          "Args": [
+            "h",
+            "k",
+            "m"
+          ],
+          "Aliases": [
+            "hmac"
+          ],
+          "Examples": [
+            [
+              "{{ hmac \"sha256\" \"Secret key\" \"Hello world, gophers!\" }}",
+              "b6d11b6c53830b9d87036272ca9fe9d19306b8f9d8aa07b15da27d89e6e34f40"
+            ]
+          ]
+        },
         "MD5": {
           "Description": "MD5 hashes the given input and returns its MD5 checksum.",
           "Args": [
@@ -2941,6 +3271,21 @@
           "Examples": []
         }
       },
+      "debug": {
+        "Dump": {
+          "Description": "Dump returns a object dump of val as a string.\nNote that not every value passed to Dump will print so nicely, but\nwe'll improve on that. We recommend using the \"go\" Chroma lexer to format the output\nnicely.\nAlso note that the output from Dump may change from Hugo version to the next,\nso don't depend on a specific output.",
+          "Args": [
+            "val"
+          ],
+          "Aliases": null,
+          "Examples": [
+            [
+              "{{- $m := newScratch -}}\n{{- $m.Set \"Hugo\" \"Rocks!\" -}}\n{{- $m.Values | debug.Dump | safeHTML -}}",
+              "map[string]interface {}{\n  \"Hugo\": \"Rocks!\",\n}"
+            ]
+          ]
+        }
+      },
       "encoding": {
         "Base64Decode": {
           "Description": "Base64Decode returns the base64 decoding of the given content.",
@@ -2977,9 +3322,9 @@
           ]
         },
         "Jsonify": {
-          "Description": "Jsonify encodes a given object to JSON.",
+          "Description": "Jsonify encodes a given object to JSON.  To pretty print the JSON, pass a map\nor dictionary of options as the first argument.  Supported options are\n\"prefix\" and \"indent\".  Each JSON element in the output will begin on a new\nline beginning with prefix followed by one or more copies of indent according\nto the indentation nesting.",
           "Args": [
-            "v"
+            "args"
           ],
           "Aliases": [
             "jsonify"
@@ -2988,6 +3333,10 @@
             [
               "{{ (slice \"A\" \"B\" \"C\") | jsonify }}",
               "[\"A\",\"B\",\"C\"]"
+            ],
+            [
+              "{{ (slice \"A\" \"B\" \"C\") | jsonify (dict \"indent\" \"  \") }}",
+              "[\n  \"A\",\n  \"B\",\n  \"C\"\n]"
             ]
           ]
         }
@@ -3074,6 +3423,12 @@
       },
       "hugo": {
         "Generator": {
+          "Description": "",
+          "Args": null,
+          "Aliases": null,
+          "Examples": null
+        },
+        "IsProduction": {
           "Description": "",
           "Args": null,
           "Aliases": null,
@@ -3247,6 +3602,14 @@
           ]
         }
       },
+      "js": {
+        "Build": {
+          "Description": "",
+          "Args": null,
+          "Aliases": null,
+          "Examples": null
+        }
+      },
       "lang": {
         "Merge": {
           "Description": "",
@@ -3418,6 +3781,22 @@
             ]
           ]
         },
+        "Pow": {
+          "Description": "Pow returns a raised to the power of b.",
+          "Args": [
+            "a",
+            "b"
+          ],
+          "Aliases": [
+            "pow"
+          ],
+          "Examples": [
+            [
+              "{{math.Pow 2 3}}",
+              "8"
+            ]
+          ]
+        },
         "Round": {
           "Description": "Round returns the nearest integer, rounding half away from zero.",
           "Args": [
@@ -3428,6 +3807,19 @@
             [
               "{{math.Round 1.5}}",
               "2"
+            ]
+          ]
+        },
+        "Sqrt": {
+          "Description": "Sqrt returns the square root of a number.\nNOTE: will return for NaN for negative values of a",
+          "Args": [
+            "a"
+          ],
+          "Aliases": null,
+          "Examples": [
+            [
+              "{{math.Sqrt 81}}",
+              "9"
             ]
           ]
         },
@@ -3446,6 +3838,14 @@
               "1"
             ]
           ]
+        }
+      },
+      "openapi3": {
+        "Unmarshal": {
+          "Description": "",
+          "Args": null,
+          "Aliases": null,
+          "Examples": []
         }
       },
       "os": {
@@ -3636,6 +4036,16 @@
         }
       },
       "resources": {
+        "Babel": {
+          "Description": "Babel processes the given Resource with Babel.",
+          "Args": [
+            "args"
+          ],
+          "Aliases": [
+            "babel"
+          ],
+          "Examples": []
+        },
         "Concat": {
           "Description": "",
           "Args": null,
@@ -3703,6 +4113,12 @@
             "postCSS"
           ],
           "Examples": []
+        },
+        "PostProcess": {
+          "Description": "",
+          "Args": null,
+          "Aliases": null,
+          "Examples": null
         },
         "ToCSS": {
           "Description": "ToCSS converts the given Resource to CSS. You can optional provide an Options\nobject or a target path (string) as first argument.",
@@ -3926,6 +4342,20 @@
           "Aliases": null,
           "Examples": null
         },
+        "Count": {
+          "Description": "Count counts the number of non-overlapping instances of substr in s.\nIf substr is an empty string, Count returns 1 + the number of Unicode code points in s.",
+          "Args": [
+            "substr",
+            "s"
+          ],
+          "Aliases": null,
+          "Examples": [
+            [
+              "{{\"aabab\" | strings.Count \"a\" }}",
+              "3"
+            ]
+          ]
+        },
         "CountRunes": {
           "Description": "CountRunes returns the number of runes in s, excluding whitepace.",
           "Args": [
@@ -4017,11 +4447,12 @@
           ]
         },
         "Replace": {
-          "Description": "Replace returns a copy of the string s with all occurrences of old replaced\nwith new.",
+          "Description": "Replace returns a copy of the string s with all occurrences of old replaced\nwith new.  The number of replacements can be limited with an optional fourth\nparameter.",
           "Args": [
             "s",
             "old",
-            "new"
+            "new",
+            "limit"
           ],
           "Aliases": [
             "replace"
@@ -4030,20 +4461,34 @@
             [
               "{{ replace \"Batman and Robin\" \"Robin\" \"Catwoman\" }}",
               "Batman and Catwoman"
+            ],
+            [
+              "{{ replace \"aabbaabb\" \"a\" \"z\" 2 }}",
+              "zzbbaabb"
             ]
           ]
         },
         "ReplaceRE": {
-          "Description": "ReplaceRE returns a copy of s, replacing all matches of the regular\nexpression pattern with the replacement text repl.",
+          "Description": "ReplaceRE returns a copy of s, replacing all matches of the regular\nexpression pattern with the replacement text repl. The number of replacements\ncan be limited with an optional fourth parameter.",
           "Args": [
             "pattern",
             "repl",
-            "s"
+            "s",
+            "n"
           ],
           "Aliases": [
             "replaceRE"
           ],
-          "Examples": []
+          "Examples": [
+            [
+              "{{ replaceRE \"a+b\" \"X\" \"aabbaabbab\" }}",
+              "XbXbX"
+            ],
+            [
+              "{{ replaceRE \"a+b\" \"X\" \"aabbaabbab\" 1 }}",
+              "Xbaabbab"
+            ]
+          ]
         },
         "RuneCount": {
           "Description": "RuneCount returns the number of runes in s.",
@@ -4277,7 +4722,8 @@
         "AsTime": {
           "Description": "AsTime converts the textual representation of the datetime string into\na time.Time interface.",
           "Args": [
-            "v"
+            "v",
+            "args"
           ],
           "Aliases": null,
           "Examples": [
@@ -4353,7 +4799,7 @@
           "Examples": [
             [
               "{{ \"I :heart: Hugo\" | emojify }}",
-              "I ❤ Hugo"
+              "I ❤️ Hugo"
             ]
           ]
         },
@@ -4464,7 +4910,7 @@
           ]
         },
         "Unmarshal": {
-          "Description": "Unmarshal unmarshals the data given, which can be either a string\nor a Resource. Supported formats are JSON, TOML, YAML, and CSV.\nYou can optionally provide an options map as the first argument.",
+          "Description": "Unmarshal unmarshals the data given, which can be either a string, json.RawMessage\nor a Resource. Supported formats are JSON, TOML, YAML, and CSV.\nYou can optionally provide an options map as the first argument.",
           "Args": [
             "args"
           ],

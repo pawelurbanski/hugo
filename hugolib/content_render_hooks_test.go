@@ -13,7 +13,12 @@
 
 package hugolib
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+
+	qt "github.com/frankban/quicktest"
+)
 
 func TestRenderHooks(t *testing.T) {
 	config := `
@@ -44,6 +49,8 @@ Inner Block: {{ .Inner | .Page.RenderString (dict "display" "block" ) }}
 	b.WithTemplatesAdded("_default/_markup/render-link.html", `{{ with .Page }}{{ .Title }}{{ end }}|{{ .Destination | safeURL }}|Title: {{ .Title | safeHTML }}|Text: {{ .Text | safeHTML }}|END`)
 	b.WithTemplatesAdded("docs/_markup/render-link.html", `Link docs section: {{ .Text | safeHTML }}|END`)
 	b.WithTemplatesAdded("_default/_markup/render-image.html", `IMAGE: {{ .Page.Title }}||{{ .Destination | safeURL }}|Title: {{ .Title | safeHTML }}|Text: {{ .Text | safeHTML }}|END`)
+	b.WithTemplatesAdded("_default/_markup/render-heading.html", `HEADING: {{ .Page.Title }}||Level: {{ .Level }}|Anchor: {{ .Anchor | safeURL }}|Text: {{ .Text | safeHTML }}|END`)
+	b.WithTemplatesAdded("docs/_markup/render-heading.html", `Docs Level: {{ .Level }}|END`)
 
 	b.WithContent("customview/p1.md", `---
 title: Custom View
@@ -74,6 +81,8 @@ layout: mylayout
 {{< myshortcode1 >}}
 
 [Some Text](https://www.google.com "Google's Homepage")
+
+,[No Whitespace Please](https://gohugo.io),
 
 
 
@@ -115,8 +124,39 @@ title: With RenderString
 
 {{< myshortcode5 >}}Inner Link: [Inner Link](https://www.gohugo.io "Hugo's Homepage"){{< /myshortcode5 >}}
 
+`, "blog/p7.md", `---
+title: With Headings
+---
+
+# Heading Level 1
+some text
+
+## Heading Level 2
+
+### Heading Level 3
+`,
+		"docs/p8.md", `---
+title: Doc With Heading
+---
+
+# Docs lvl 1
+
+`,
+	)
+
+	for i := 1; i <= 30; i++ {
+		// Add some content with no shortcodes or links, i.e no templates needed.
+		b.WithContent(fmt.Sprintf("blog/notempl%d.md", i), `---
+title: No Template
+---
+
+## Content
 `)
-	b.Build(BuildCfg{})
+	}
+	counters := &testCounters{}
+	b.Build(BuildCfg{testCounters: counters})
+	b.Assert(int(counters.contentRenderCounter), qt.Equals, 45)
+
 	b.AssertFileContent("public/blog/p1/index.html", `
 <p>Cool Page|https://www.google.com|Title: Google's Homepage|Text: First Link|END</p>
 Text: Second
@@ -125,7 +165,10 @@ SHORT3|
 `)
 
 	b.AssertFileContent("public/customview/p1/index.html", `.Render: myrender: Custom View|P4: PARTIAL4`)
-	b.AssertFileContent("public/blog/p2/index.html", `PARTIAL`)
+	b.AssertFileContent("public/blog/p2/index.html",
+		`PARTIAL
+,Cool Page2|https://gohugo.io|Title: |Text: No Whitespace Please|END,`,
+	)
 	b.AssertFileContent("public/blog/p3/index.html", `PARTIAL3`)
 	// We may add type template support later, keep this for then. b.AssertFileContent("public/docs/docs1/index.html", `Link docs section: Docs 1|END`)
 	b.AssertFileContent("public/blog/p4/index.html", `<p>IMAGE: Cool Page With Image||/images/Dragster.jpg|Title: image title|Text: Drag Racing|END</p>`)
@@ -147,7 +190,11 @@ SHORT3|
 		"layouts/shortcodes/myshortcode3.html", `SHORT3_EDITED|`,
 	)
 
-	b.Build(BuildCfg{})
+	counters = &testCounters{}
+	b.Build(BuildCfg{testCounters: counters})
+	// Make sure that only content using the changed templates are re-rendered.
+	b.Assert(int(counters.contentRenderCounter), qt.Equals, 7)
+
 	b.AssertFileContent("public/customview/p1/index.html", `.Render: myrender: Custom View|P4: PARTIAL4_EDITED`)
 	b.AssertFileContent("public/blog/p1/index.html", `<p>EDITED: https://www.google.com|</p>`, "SHORT3_EDITED|")
 	b.AssertFileContent("public/blog/p2/index.html", `PARTIAL1_EDITED`)
@@ -155,6 +202,10 @@ SHORT3|
 	// We may add type template support later, keep this for then. b.AssertFileContent("public/docs/docs1/index.html", `DOCS EDITED: https://www.google.com|</p>`)
 	b.AssertFileContent("public/blog/p4/index.html", `IMAGE EDITED: /images/Dragster.jpg|`)
 	b.AssertFileContent("public/blog/p6/index.html", "<p>Inner Link: EDITED: https://www.gohugo.io|</p>")
+	b.AssertFileContent("public/blog/p7/index.html", "HEADING: With Headings||Level: 1|Anchor: heading-level-1|Text: Heading Level 1|END<p>some text</p>\nHEADING: With Headings||Level: 2|Anchor: heading-level-2|Text: Heading Level 2|ENDHEADING: With Headings||Level: 3|Anchor: heading-level-3|Text: Heading Level 3|END")
+
+	// https://github.com/gohugoio/hugo/issues/7349
+	b.AssertFileContent("public/docs/p8/index.html", "Docs Level: 1")
 
 }
 
@@ -326,9 +377,10 @@ func TestRenderString(t *testing.T) {
 RSTART:{{ "**Bold Markdown**" | $p.RenderString }}:REND
 RSTART:{{  "**Bold Block Markdown**" | $p.RenderString  $optBlock }}:REND
 RSTART:{{  "/italic org mode/" | $p.RenderString  $optOrg }}:REND
+RSTART:{{ "## Header2" | $p.RenderString }}:REND
 
 
-`)
+`, "_default/_markup/render-heading.html", "Hook Heading: {{ .Level }}")
 
 	b.WithContent("p1.md", `---
 title: "p1"
@@ -342,6 +394,34 @@ title: "p1"
 RSTART:<strong>Bold Markdown</strong>:REND
 RSTART:<p><strong>Bold Block Markdown</strong></p>
 RSTART:<em>italic org mode</em>:REND
+RSTART:Hook Heading: 2:REND
 `)
+
+}
+
+// https://github.com/gohugoio/hugo/issues/6882
+func TestRenderStringOnListPage(t *testing.T) {
+	renderStringTempl := `
+{{ .RenderString "**Hello**" }}
+`
+	b := newTestSitesBuilder(t)
+	b.WithContent("mysection/p1.md", `FOO`)
+	b.WithTemplates(
+		"index.html", renderStringTempl,
+		"_default/list.html", renderStringTempl,
+		"_default/single.html", renderStringTempl,
+	)
+
+	b.Build(BuildCfg{})
+
+	for _, filename := range []string{
+		"index.html",
+		"mysection/index.html",
+		"categories/index.html",
+		"tags/index.html",
+		"mysection/p1/index.html",
+	} {
+		b.AssertFileContent("public/"+filename, `<strong>Hello</strong>`)
+	}
 
 }

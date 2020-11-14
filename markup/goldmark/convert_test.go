@@ -97,6 +97,7 @@ LINE1
 * Straight double "quotes" and single 'quotes' into “curly” quote HTML entities
 * Dashes (“--” and “---”) into en- and em-dash entities
 * Three consecutive dots (“...”) into an ellipsis entity
+* Apostrophes are also converted: "That was back in the '90s, that's a long time ago"
 
 ## Footnotes
 
@@ -148,11 +149,12 @@ description
 	c.Assert(got, qt.Contains, `Autolink: <a href="https://gohugo.io/">https://gohugo.io/</a>`)
 	c.Assert(got, qt.Contains, `Strikethrough:<del>Hi</del> Hello, world`)
 	c.Assert(got, qt.Contains, `<th>foo</th>`)
-	c.Assert(got, qt.Contains, `<li><input disabled="" type="checkbox">Push my commits to GitHub</li>`)
+	c.Assert(got, qt.Contains, `<li><input disabled="" type="checkbox"> Push my commits to GitHub</li>`)
 
 	c.Assert(got, qt.Contains, `Straight double &ldquo;quotes&rdquo; and single &lsquo;quotes&rsquo;`)
 	c.Assert(got, qt.Contains, `Dashes (“&ndash;” and “&mdash;”) `)
 	c.Assert(got, qt.Contains, `Three consecutive dots (“&hellip;”)`)
+	c.Assert(got, qt.Contains, `&ldquo;That was back in the &rsquo;90s, that&rsquo;s a long time ago&rdquo;`)
 	c.Assert(got, qt.Contains, `footnote.<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup>`)
 	c.Assert(got, qt.Contains, `<section class="footnotes" role="doc-endnotes">`)
 	c.Assert(got, qt.Contains, `<dt>date</dt>`)
@@ -191,6 +193,26 @@ func TestConvertAutoIDBlackfriday(t *testing.T) {
 	got := string(b.Bytes())
 
 	c.Assert(got, qt.Contains, "<h2 id=\"let-s-try-this-shall-we\">")
+}
+
+func TestConvertIssues(t *testing.T) {
+	c := qt.New(t)
+
+	// https://github.com/gohugoio/hugo/issues/7619
+	c.Run("Hyphen in HTML attributes", func(c *qt.C) {
+		mconf := markup_config.Default
+		mconf.Goldmark.Renderer.Unsafe = true
+		input := `<custom-element>
+    <div>This will be "slotted" into the custom element.</div>
+</custom-element>
+`
+
+		b := convert(c, mconf, input)
+		got := string(b.Bytes())
+
+		c.Assert(got, qt.Contains, "<custom-element>\n    <div>This will be \"slotted\" into the custom element.</div>\n</custom-element>\n")
+	})
+
 }
 
 func TestCodeFence(t *testing.T) {

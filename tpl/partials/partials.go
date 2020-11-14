@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gohugoio/hugo/common/hreflect"
 	texttemplate "github.com/gohugoio/hugo/tpl/internal/go_templates/texttemplate"
 
 	"github.com/gohugoio/hugo/helpers"
@@ -93,23 +94,19 @@ func (c *contextWrapper) Set(in interface{}) string {
 // Else, the rendered output will be returned:
 // A string if the partial is a text/template, or template.HTML when html/template.
 func (ns *Namespace) Include(name string, contextList ...interface{}) (interface{}, error) {
-	if strings.HasPrefix(name, "partials/") {
-		name = name[8:]
-	}
-	var context interface{}
+	name = strings.TrimPrefix(name, "partials/")
 
-	if len(contextList) == 0 {
-		context = nil
-	} else {
+	var context interface{}
+	if len(contextList) > 0 {
 		context = contextList[0]
 	}
 
 	n := "partials/" + name
-	templ, found := ns.deps.Tmpl.Lookup(n)
+	templ, found := ns.deps.Tmpl().Lookup(n)
 
 	if !found {
 		// For legacy reasons.
-		templ, found = ns.deps.Tmpl.Lookup(n + ".html")
+		templ, found = ns.deps.Tmpl().Lookup(n + ".html")
 	}
 
 	if !found {
@@ -124,6 +121,10 @@ func (ns *Namespace) Include(name string, contextList ...interface{}) (interface
 	var w io.Writer
 
 	if info.HasReturn {
+		if !hreflect.IsTruthful(context) {
+			// TODO(bep) we need to fix this, but it is non-trivial.
+			return nil, errors.New("partial that returns a value needs a non-zero argument.")
+		}
 		// Wrap the context sent to the template to capture the return value.
 		// Note that the template is rewritten to make sure that the dot (".")
 		// and the $ variable points to Arg.
@@ -139,7 +140,7 @@ func (ns *Namespace) Include(name string, contextList ...interface{}) (interface
 		w = b
 	}
 
-	if err := ns.deps.Tmpl.Execute(templ, w, context); err != nil {
+	if err := ns.deps.Tmpl().Execute(templ, w, context); err != nil {
 		return "", err
 	}
 

@@ -15,9 +15,12 @@ package modules
 
 import (
 	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
-	"github.com/gohugoio/hugo/common/hugo"
+	"github.com/gohugoio/hugo/hugofs/glob"
 
 	"github.com/gohugoio/hugo/htesting"
 
@@ -27,79 +30,147 @@ import (
 )
 
 func TestClient(t *testing.T) {
-	if hugo.GoMinorVersion() < 12 {
-		// https://github.com/golang/go/issues/26794
-		// There were some concurrent issues with Go modules in < Go 12.
-		t.Skip("skip this for Go <= 1.11 due to a bug in Go's stdlib")
-	}
-
-	t.Parallel()
 
 	modName := "hugo-modules-basic-test"
 	modPath := "github.com/gohugoio/tests/" + modName
-	modConfig := DefaultModuleConfig
-	modConfig.Imports = []Import{Import{Path: "github.com/gohugoio/hugoTestModules1_darwin/modh2_2"}}
-
-	c := qt.New(t)
-
-	workingDir, clean, err := htesting.CreateTempDir(hugofs.Os, modName)
-	c.Assert(err, qt.IsNil)
-	defer clean()
-
-	client := NewClient(ClientConfig{
-		Fs:           hugofs.Os,
-		WorkingDir:   workingDir,
-		ModuleConfig: modConfig,
-	})
-
-	// Test Init
-	c.Assert(client.Init(modPath), qt.IsNil)
-
-	// Test Collect
-	mc, err := client.Collect()
-	c.Assert(err, qt.IsNil)
-	c.Assert(len(mc.AllModules), qt.Equals, 4)
-	for _, m := range mc.AllModules {
-		c.Assert(m, qt.Not(qt.IsNil))
-	}
-
-	// Test Graph
-	var graphb bytes.Buffer
-	c.Assert(client.Graph(&graphb), qt.IsNil)
-
 	expect := `github.com/gohugoio/tests/hugo-modules-basic-test github.com/gohugoio/hugoTestModules1_darwin/modh2_2@v1.4.0
 github.com/gohugoio/hugoTestModules1_darwin/modh2_2@v1.4.0 github.com/gohugoio/hugoTestModules1_darwin/modh2_2_1v@v1.3.0
 github.com/gohugoio/hugoTestModules1_darwin/modh2_2@v1.4.0 github.com/gohugoio/hugoTestModules1_darwin/modh2_2_2@v1.3.0
 `
 
-	c.Assert(graphb.String(), qt.Equals, expect)
+	c := qt.New(t)
 
-	// Test Vendor
-	c.Assert(client.Vendor(), qt.IsNil)
-	graphb.Reset()
-	c.Assert(client.Graph(&graphb), qt.IsNil)
-	expectVendored := `project github.com/gohugoio/hugoTestModules1_darwin/modh2_2@v1.4.0+vendor
+	newClient := func(c *qt.C, withConfig func(cfg *ClientConfig)) (*Client, func()) {
+
+		workingDir, clean, err := htesting.CreateTempDir(hugofs.Os, modName)
+		c.Assert(err, qt.IsNil)
+		themesDir := filepath.Join(workingDir, "themes")
+		err = os.Mkdir(themesDir, 0777)
+		c.Assert(err, qt.IsNil)
+
+		ccfg := ClientConfig{
+			Fs:         hugofs.Os,
+			WorkingDir: workingDir,
+			ThemesDir:  themesDir,
+		}
+
+		withConfig(&ccfg)
+		ccfg.ModuleConfig.Imports = []Import{Import{Path: "github.com/gohugoio/hugoTestModules1_darwin/modh2_2"}}
+		client := NewClient(ccfg)
+
+		return client, clean
+	}
+
+	c.Run("All", func(c *qt.C) {
+		client, clean := newClient(c, func(cfg *ClientConfig) {
+			cfg.ModuleConfig = DefaultModuleConfig
+		})
+		defer clean()
+
+		// Test Init
+		c.Assert(client.Init(modPath), qt.IsNil)
+
+		// Test Collect
+		mc, err := client.Collect()
+		c.Assert(err, qt.IsNil)
+		c.Assert(len(mc.AllModules), qt.Equals, 4)
+		for _, m := range mc.AllModules {
+			c.Assert(m, qt.Not(qt.IsNil))
+		}
+
+		// Test Graph
+		var graphb bytes.Buffer
+		c.Assert(client.Graph(&graphb), qt.IsNil)
+
+		c.Assert(graphb.String(), qt.Equals, expect)
+
+		// Test Vendor
+		c.Assert(client.Vendor(), qt.IsNil)
+		graphb.Reset()
+		c.Assert(client.Graph(&graphb), qt.IsNil)
+
+		expectVendored := `project github.com/gohugoio/hugoTestModules1_darwin/modh2_2@v1.4.0+vendor
 project github.com/gohugoio/hugoTestModules1_darwin/modh2_2_1v@v1.3.0+vendor
 project github.com/gohugoio/hugoTestModules1_darwin/modh2_2_2@v1.3.0+vendor
 `
-	c.Assert(graphb.String(), qt.Equals, expectVendored)
 
-	// Test the ignoreVendor setting
-	clientIgnoreVendor := NewClient(ClientConfig{
-		Fs:           hugofs.Os,
-		WorkingDir:   workingDir,
-		ModuleConfig: modConfig,
-		IgnoreVendor: true,
+		c.Assert(graphb.String(), qt.Equals, expectVendored)
+
+		// Test Tidy
+		c.Assert(client.Tidy(), qt.IsNil)
+
 	})
 
-	graphb.Reset()
-	c.Assert(clientIgnoreVendor.Graph(&graphb), qt.IsNil)
-	c.Assert(graphb.String(), qt.Equals, expect)
+	c.Run("IgnoreVendor", func(c *qt.C) {
+		client, clean := newClient(
+			c, func(cfg *ClientConfig) {
+				cfg.ModuleConfig = DefaultModuleConfig
+				cfg.IgnoreVendor = globAll
+			})
+		defer clean()
 
-	// Test Tidy
-	c.Assert(client.Tidy(), qt.IsNil)
+		c.Assert(client.Init(modPath), qt.IsNil)
+		_, err := client.Collect()
+		c.Assert(err, qt.IsNil)
+		c.Assert(client.Vendor(), qt.IsNil)
+
+		var graphb bytes.Buffer
+		c.Assert(client.Graph(&graphb), qt.IsNil)
+		c.Assert(graphb.String(), qt.Equals, expect)
+	})
+
+	c.Run("NoVendor", func(c *qt.C) {
+		mcfg := DefaultModuleConfig
+		mcfg.NoVendor = "**"
+		client, clean := newClient(
+			c, func(cfg *ClientConfig) {
+				cfg.ModuleConfig = mcfg
+			})
+		defer clean()
+
+		c.Assert(client.Init(modPath), qt.IsNil)
+		_, err := client.Collect()
+		c.Assert(err, qt.IsNil)
+		c.Assert(client.Vendor(), qt.IsNil)
+
+		var graphb bytes.Buffer
+		c.Assert(client.Graph(&graphb), qt.IsNil)
+		c.Assert(graphb.String(), qt.Equals, expect)
+	})
+
+	// https://github.com/gohugoio/hugo/issues/7908
+	c.Run("createThemeDirname", func(c *qt.C) {
+		mcfg := DefaultModuleConfig
+		client, clean := newClient(
+			c, func(cfg *ClientConfig) {
+				cfg.ModuleConfig = mcfg
+			})
+		defer clean()
+
+		dirname, err := client.createThemeDirname("foo", false)
+		c.Assert(err, qt.IsNil)
+		c.Assert(dirname, qt.Equals, filepath.Join(client.ccfg.ThemesDir, "foo"))
+
+		dirname, err = client.createThemeDirname("../../foo", true)
+		c.Assert(err, qt.IsNil)
+		c.Assert(dirname, qt.Equals, filepath.Join(client.ccfg.ThemesDir, "../../foo"))
+
+		dirname, err = client.createThemeDirname("../../foo", false)
+		c.Assert(err, qt.Not(qt.IsNil))
+
+		absDir := filepath.Join(client.ccfg.WorkingDir, "..", "..")
+		dirname, err = client.createThemeDirname(absDir, true)
+		c.Assert(err, qt.IsNil)
+		c.Assert(dirname, qt.Equals, absDir)
+		dirname, err = client.createThemeDirname(absDir, false)
+		fmt.Println(dirname)
+		c.Assert(err, qt.Not(qt.IsNil))
+
+	})
 
 }
+
+var globAll, _ = glob.GetGlob("**")
 
 func TestGetModlineSplitter(t *testing.T) {
 

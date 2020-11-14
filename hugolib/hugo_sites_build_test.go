@@ -9,6 +9,7 @@ import (
 	"time"
 
 	qt "github.com/frankban/quicktest"
+	"github.com/gohugoio/hugo/htesting"
 	"github.com/gohugoio/hugo/resources/page"
 
 	"github.com/fortytw2/leaktest"
@@ -254,8 +255,10 @@ func doTestMultiSitesBuild(t *testing.T, configTemplate, configSuffix string) {
 	b.AssertFileContent("public/fr/404.html", "404|fr|404 Page not found")
 
 	// Check robots.txt
-	b.AssertFileContent("public/en/robots.txt", "robots|en|")
-	b.AssertFileContent("public/nn/robots.txt", "robots|nn|")
+	// the domain root is the public directory, so the robots.txt has to be created there and not in the language directories
+	b.AssertFileContent("public/robots.txt", "robots")
+	b.AssertFileDoesNotExist("public/en/robots.txt")
+	b.AssertFileDoesNotExist("public/nn/robots.txt")
 
 	b.AssertFileContent("public/en/sect/doc1-slug/index.html", "Permalink: http://example.com/blog/en/sect/doc1-slug/")
 	b.AssertFileContent("public/en/sect/doc2/index.html", "Permalink: http://example.com/blog/en/sect/doc2/")
@@ -276,8 +279,8 @@ func doTestMultiSitesBuild(t *testing.T, configTemplate, configSuffix string) {
 	c.Assert(len(doc4.Translations()), qt.Equals, 0)
 
 	// Taxonomies and their URLs
-	c.Assert(len(enSite.Taxonomies), qt.Equals, 1)
-	tags := enSite.Taxonomies["tags"]
+	c.Assert(len(enSite.Taxonomies()), qt.Equals, 1)
+	tags := enSite.Taxonomies()["tags"]
 	c.Assert(len(tags), qt.Equals, 2)
 	c.Assert(doc1en, qt.Equals, tags["tag1"][0].Page)
 
@@ -338,14 +341,14 @@ func doTestMultiSitesBuild(t *testing.T, configTemplate, configSuffix string) {
 
 	nnSite := sites[2]
 	c.Assert(nnSite.language.Lang, qt.Equals, "nn")
-	taxNn := nnSite.getPage(page.KindTaxonomyTerm, "lag")
+	taxNn := nnSite.getPage(page.KindTaxonomy, "lag")
 	c.Assert(taxNn, qt.Not(qt.IsNil))
 	c.Assert(len(taxNn.Translations()), qt.Equals, 1)
 	c.Assert(taxNn.Translations()[0].Language().Lang, qt.Equals, "nb")
 
-	taxTermNn := nnSite.getPage(page.KindTaxonomy, "lag", "sogndal")
+	taxTermNn := nnSite.getPage(page.KindTerm, "lag", "sogndal")
 	c.Assert(taxTermNn, qt.Not(qt.IsNil))
-	c.Assert(nnSite.getPage(page.KindTaxonomy, "LAG", "SOGNDAL"), qt.Equals, taxTermNn)
+	c.Assert(nnSite.getPage(page.KindTerm, "LAG", "SOGNDAL"), qt.Equals, taxTermNn)
 	c.Assert(len(taxTermNn.Translations()), qt.Equals, 1)
 	c.Assert(taxTermNn.Translations()[0].Language().Lang, qt.Equals, "nb")
 
@@ -357,8 +360,8 @@ func doTestMultiSitesBuild(t *testing.T, configTemplate, configSuffix string) {
 	b.AssertFileContent("public/fr/sitemap.xml", "http://example.com/blog/fr/sect/doc1/")
 
 	// Check taxonomies
-	enTags := enSite.Taxonomies["tags"]
-	frTags := frSite.Taxonomies["plaques"]
+	enTags := enSite.Taxonomies()["tags"]
+	frTags := frSite.Taxonomies()["plaques"]
 	c.Assert(len(enTags), qt.Equals, 2, qt.Commentf("Tags in en: %v", enTags))
 	c.Assert(len(frTags), qt.Equals, 2, qt.Commentf("Tags in fr: %v", frTags))
 	c.Assert(enTags["tag1"], qt.Not(qt.IsNil))
@@ -706,7 +709,7 @@ func checkContent(s *sitesBuilder, filename string, matches ...string) {
 	content := readDestination(s.T, s.Fs, filename)
 	for _, match := range matches {
 		if !strings.Contains(content, match) {
-			s.Fatalf("No match for %q in content for %s\n%q", match, filename, content)
+			s.Fatalf("No match for\n%q\nin content for %s\n%q\nDiff:\n%s", match, filename, content, htesting.DiffStrings(content, match))
 		}
 	}
 }

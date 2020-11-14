@@ -82,6 +82,7 @@ func (r Response) IsUserError() bool {
 // Execute adds all child commands to the root command HugoCmd and sets flags appropriately.
 // The args are usually filled with os.Args[1:].
 func Execute(args []string) Response {
+
 	hugoCmd := newCommandsBuilder().addAll().build()
 	cmd := hugoCmd.getCommand()
 	cmd.SetArgs(args)
@@ -118,9 +119,9 @@ func Execute(args []string) Response {
 func initializeConfig(mustHaveConfigFile, running bool,
 	h *hugoBuilderCommon,
 	f flagsToConfigHandler,
-	doWithCommandeer func(c *commandeer) error) (*commandeer, error) {
+	cfgInit func(c *commandeer) error) (*commandeer, error) {
 
-	c, err := newCommandeer(mustHaveConfigFile, running, h, f, doWithCommandeer)
+	c, err := newCommandeer(mustHaveConfigFile, running, h, f, cfgInit)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +130,7 @@ func initializeConfig(mustHaveConfigFile, running bool,
 
 }
 
-func (c *commandeer) createLogger(cfg config.Provider, running bool) (*loggers.Logger, error) {
+func (c *commandeer) createLogger(cfg config.Provider, running bool) (loggers.Logger, error) {
 	var (
 		logHandle       = ioutil.Discard
 		logThreshold    = jww.LevelWarn
@@ -199,6 +200,7 @@ func initializeFlags(cmd *cobra.Command, cfg config.Provider) {
 		"noTimes",
 		"noChmod",
 		"ignoreVendor",
+		"ignoreVendorPaths",
 		"templateMetrics",
 		"templateMetricsHints",
 
@@ -231,11 +233,6 @@ func initializeFlags(cmd *cobra.Command, cfg config.Provider) {
 		"duplicateTargetPaths",
 	}
 
-	// Will set a value even if it is the default.
-	flagKeysForced := []string{
-		"minify",
-	}
-
 	for _, key := range persFlagKeys {
 		setValueFromFlag(cmd.PersistentFlags(), key, cfg, "", false)
 	}
@@ -243,9 +240,7 @@ func initializeFlags(cmd *cobra.Command, cfg config.Provider) {
 		setValueFromFlag(cmd.Flags(), key, cfg, "", false)
 	}
 
-	for _, key := range flagKeysForced {
-		setValueFromFlag(cmd.Flags(), key, cfg, "", true)
-	}
+	setValueFromFlag(cmd.Flags(), "minify", cfg, "minifyOutput", true)
 
 	// Set some "config aliases"
 	setValueFromFlag(cmd.Flags(), "destination", cfg, "publishDir", false)
@@ -284,13 +279,6 @@ func setValueFromFlag(flags *flag.FlagSet, key string, cfg config.Provider, targ
 
 func isTerminal() bool {
 	return terminal.IsTerminal(os.Stdout)
-
-}
-func ifTerminal(s string) string {
-	if !isTerminal() {
-		return ""
-	}
-	return s
 }
 
 func (c *commandeer) fullBuild() error {
@@ -301,7 +289,7 @@ func (c *commandeer) fullBuild() error {
 	)
 
 	if !c.h.quiet {
-		fmt.Print(ifTerminal(hideCursor) + "Building sites … ")
+		fmt.Println("Start building sites … ")
 		if isTerminal() {
 			defer func() {
 				fmt.Print(showCursor + clearLine)
@@ -386,12 +374,12 @@ func (c *commandeer) initMemProfile() {
 
 	f, err := os.Create(c.h.memprofile)
 	if err != nil {
-		c.logger.ERROR.Println("could not create memory profile: ", err)
+		c.logger.Errorf("could not create memory profile: ", err)
 	}
 	defer f.Close()
 	runtime.GC() // get up-to-date statistics
 	if err := pprof.WriteHeapProfile(f); err != nil {
-		c.logger.ERROR.Println("could not write memory profile: ", err)
+		c.logger.Errorf("could not write memory profile: ", err)
 	}
 }
 
@@ -434,7 +422,37 @@ func (c *commandeer) initMutexProfile() (func(), error) {
 
 }
 
+func (c *commandeer) initMemTicker() func() {
+	memticker := time.NewTicker(5 * time.Second)
+	quit := make(chan struct{})
+	printMem := func() {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		fmt.Printf("\n\nAlloc = %v\nTotalAlloc = %v\nSys = %v\nNumGC = %v\n\n", formatByteCount(m.Alloc), formatByteCount(m.TotalAlloc), formatByteCount(m.Sys), m.NumGC)
+
+	}
+
+	go func() {
+		for {
+			select {
+			case <-memticker.C:
+				printMem()
+			case <-quit:
+				memticker.Stop()
+				printMem()
+				return
+			}
+
+		}
+	}()
+
+	return func() {
+		close(quit)
+	}
+}
+
 func (c *commandeer) initProfiling() (func(), error) {
+
 	stopCPUProf, err := c.initCPUProfile()
 	if err != nil {
 		return nil, err
@@ -450,6 +468,11 @@ func (c *commandeer) initProfiling() (func(), error) {
 		return nil, err
 	}
 
+	var stopMemTicker func()
+	if c.h.printm {
+		stopMemTicker = c.initMemTicker()
+	}
+
 	return func() {
 		c.initMemProfile()
 
@@ -462,6 +485,10 @@ func (c *commandeer) initProfiling() (func(), error) {
 
 		if stopTraceProf != nil {
 			stopTraceProf()
+		}
+
+		if stopMemTicker != nil {
+			stopMemTicker()
 		}
 	}, nil
 }
@@ -491,7 +518,7 @@ func (c *commandeer) build() error {
 		if createCounter, ok := c.destinationFs.(hugofs.DuplicatesReporter); ok {
 			dupes := createCounter.ReportDuplicates()
 			if dupes != "" {
-				c.logger.WARN.Println("Duplicate target paths:", dupes)
+				c.logger.Warnln("Duplicate target paths:", dupes)
 			}
 		}
 	}
@@ -505,8 +532,8 @@ func (c *commandeer) build() error {
 		baseWatchDir := c.Cfg.GetString("workingDir")
 		rootWatchDirs := getRootWatchDirsStr(baseWatchDir, watchDirs)
 
-		c.logger.FEEDBACK.Printf("Watching for changes in %s%s{%s}\n", baseWatchDir, helpers.FilePathSeparator, rootWatchDirs)
-		c.logger.FEEDBACK.Println("Press Ctrl+C to stop")
+		c.logger.Printf("Watching for changes in %s%s{%s}\n", baseWatchDir, helpers.FilePathSeparator, rootWatchDirs)
+		c.logger.Println("Press Ctrl+C to stop")
 		watcher, err := c.newWatcher(watchDirs...)
 		checkErr(c.Logger, err)
 		defer watcher.Close()
@@ -563,7 +590,7 @@ func (c *commandeer) doWithPublishDirs(f func(sourceFs *filesystems.SourceFilesy
 	staticFilesystems := c.hugo().BaseFs.SourceFilesystems.Static
 
 	if len(staticFilesystems) == 0 {
-		c.logger.INFO.Println("No static directories found to sync")
+		c.logger.Infoln("No static directories found to sync")
 		return langCount, nil
 	}
 
@@ -635,13 +662,13 @@ func (c *commandeer) copyStaticTo(sourceFs *filesystems.SourceFilesystem) (uint6
 	syncer.Delete = c.Cfg.GetBool("cleanDestinationDir")
 
 	if syncer.Delete {
-		c.logger.INFO.Println("removing all files from destination that don't exist in static dirs")
+		c.logger.Infoln("removing all files from destination that don't exist in static dirs")
 
 		syncer.DeleteFilter = func(f os.FileInfo) bool {
 			return f.IsDir() && strings.HasPrefix(f.Name(), ".")
 		}
 	}
-	c.logger.INFO.Println("syncing static files to", publishDir)
+	c.logger.Infoln("syncing static files to", publishDir)
 
 	// because we are using a baseFs (to get the union right).
 	// set sync src to root
@@ -662,7 +689,7 @@ func (c *commandeer) firstPathSpec() *helpers.PathSpec {
 
 func (c *commandeer) timeTrack(start time.Time, name string) {
 	elapsed := time.Since(start)
-	c.logger.FEEDBACK.Printf("%s in %v ms", name, int(1000*elapsed.Seconds()))
+	c.logger.Printf("%s in %v ms", name, int(1000*elapsed.Seconds()))
 }
 
 // getDirList provides NewWatcher() with a list of directories to watch for changes.
@@ -671,7 +698,7 @@ func (c *commandeer) getDirList() ([]string, error) {
 
 	walkFn := func(path string, fi hugofs.FileMetaInfo, err error) error {
 		if err != nil {
-			c.logger.ERROR.Println("walker: ", err)
+			c.logger.Errorln("walker: ", err)
 			return nil
 		}
 
@@ -697,7 +724,7 @@ func (c *commandeer) getDirList() ([]string, error) {
 
 		w := hugofs.NewWalkway(hugofs.WalkwayConfig{Logger: c.logger, Info: fi, WalkFn: walkFn})
 		if err := w.Walk(); err != nil {
-			c.logger.ERROR.Println("walker: ", err)
+			c.logger.Errorln("walker: ", err)
 		}
 	}
 
@@ -713,18 +740,15 @@ func (c *commandeer) buildSites() (err error) {
 func (c *commandeer) handleBuildErr(err error, msg string) {
 	c.buildErr = err
 
-	c.logger.ERROR.Print(msg + ":\n\n")
-	c.logger.ERROR.Println(helpers.FirstUpper(err.Error()))
+	c.logger.Errorln(msg + ":\n")
+	c.logger.Errorln(helpers.FirstUpper(err.Error()))
 	if !c.h.quiet && c.h.verbose {
-		herrors.PrintStackTrace(err)
+		herrors.PrintStackTraceFromErr(err)
 	}
 }
 
 func (c *commandeer) rebuildSites(events []fsnotify.Event) error {
 	defer c.timeTrack(time.Now(), "Total")
-	defer func() {
-		c.wasError = false
-	}()
 
 	c.buildErr = nil
 	visited := c.visitedURLs.PeekAllSet()
@@ -798,13 +822,13 @@ func (c *commandeer) fullRebuild(changeType string) {
 		if !c.paused {
 			_, err := c.copyStatic()
 			if err != nil {
-				c.logger.ERROR.Println(err)
+				c.logger.Errorln(err)
 				return
 			}
 
 			err = c.buildSites()
 			if err != nil {
-				c.logger.ERROR.Println(err)
+				c.logger.Errorln(err)
 			} else if !c.h.buildWatch && !c.Cfg.GetBool("disableLiveReload") {
 				livereload.ForceRefresh()
 			}
@@ -838,7 +862,7 @@ func (c *commandeer) newWatcher(dirList ...string) (*watcher.Batcher, error) {
 	// Identifies changes to config (config.toml) files.
 	configSet := make(map[string]bool)
 
-	c.logger.FEEDBACK.Println("Watching for config changes in", strings.Join(c.configFiles, ", "))
+	c.logger.Println("Watching for config changes in", strings.Join(c.configFiles, ", "))
 	for _, configFile := range c.configFiles {
 		watcher.Add(configFile)
 		configSet[configFile] = true
@@ -855,7 +879,7 @@ func (c *commandeer) newWatcher(dirList ...string) (*watcher.Batcher, error) {
 				}
 			case err := <-watcher.Errors:
 				if err != nil {
-					c.logger.ERROR.Println("Error while watching:", err)
+					c.logger.Errorln("Error while watching:", err)
 				}
 			}
 		}
@@ -871,9 +895,9 @@ func (c *commandeer) printChangeDetected(typ string) {
 	}
 	msg += " detected, rebuilding site."
 
-	c.logger.FEEDBACK.Println(msg)
+	c.logger.Println(msg)
 	const layout = "2006-01-02 15:04:05.000 -0700"
-	c.logger.FEEDBACK.Println(time.Now().Format(layout))
+	c.logger.Println(time.Now().Format(layout))
 }
 
 const (
@@ -885,6 +909,10 @@ func (c *commandeer) handleEvents(watcher *watcher.Batcher,
 	staticSyncer *staticSyncer,
 	evs []fsnotify.Event,
 	configSet map[string]bool) {
+
+	defer func() {
+		c.wasError = false
+	}()
 
 	var isHandled bool
 
@@ -951,14 +979,16 @@ func (c *commandeer) handleEvents(watcher *watcher.Batcher,
 		return
 	}
 
-	c.logger.INFO.Println("Received System Events:", evs)
+	c.logger.Infoln("Received System Events:", evs)
 
 	staticEvents := []fsnotify.Event{}
 	dynamicEvents := []fsnotify.Event{}
 
-	// Special handling for symbolic links inside /content.
 	filtered := []fsnotify.Event{}
 	for _, ev := range evs {
+		if c.hugo().ShouldSkipFileChangeEvent(ev) {
+			continue
+		}
 		// Check the most specific first, i.e. files.
 		contentMapped := c.hugo().ContentChanges.GetSymbolicLinkMappings(ev.Name)
 		if len(contentMapped) > 0 {
@@ -1031,7 +1061,7 @@ func (c *commandeer) handleEvents(watcher *watcher.Batcher,
 
 		walkAdder := func(path string, f hugofs.FileMetaInfo, err error) error {
 			if f.IsDir() {
-				c.logger.FEEDBACK.Println("adding created directory to watchlist", path)
+				c.logger.Println("adding created directory to watchlist", path)
 				if err := watcher.Add(path); err != nil {
 					return err
 				}
@@ -1063,15 +1093,15 @@ func (c *commandeer) handleEvents(watcher *watcher.Batcher,
 		c.printChangeDetected("Static files")
 
 		if c.Cfg.GetBool("forceSyncStatic") {
-			c.logger.FEEDBACK.Printf("Syncing all static files\n")
+			c.logger.Printf("Syncing all static files\n")
 			_, err := c.copyStatic()
 			if err != nil {
-				c.logger.ERROR.Println("Error copying static files to publish dir:", err)
+				c.logger.Errorln("Error copying static files to publish dir:", err)
 				return
 			}
 		} else {
 			if err := staticSyncer.syncsStaticEvents(staticEvents); err != nil {
-				c.logger.ERROR.Println("Error syncing static files to publish dir:", err)
+				c.logger.Errorln("Error syncing static files to publish dir:", err)
 				return
 			}
 		}
@@ -1080,10 +1110,11 @@ func (c *commandeer) handleEvents(watcher *watcher.Batcher,
 			// Will block forever trying to write to a channel that nobody is reading if livereload isn't initialized
 
 			// force refresh when more than one file
-			if len(staticEvents) == 1 {
+			if !c.wasError && len(staticEvents) == 1 {
 				ev := staticEvents[0]
 				path := c.hugo().BaseFs.SourceFilesystems.MakeStaticPathRelative(ev.Name)
 				path = c.firstPathSpec().RelURL(helpers.ToSlashTrimLeading(path), false)
+
 				livereload.RefreshPath(path)
 			} else {
 				livereload.ForceRefresh()
@@ -1107,6 +1138,10 @@ func (c *commandeer) handleEvents(watcher *watcher.Batcher,
 
 		if doLiveReload {
 			if len(partitionedEvents.ContentEvents) == 0 && len(partitionedEvents.AssetEvents) > 0 {
+				if c.wasError {
+					livereload.ForceRefresh()
+					return
+				}
 				changed := c.changeDetector.changed()
 				if c.changeDetector != nil && len(changed) == 0 {
 					// Nothing has changed.
@@ -1175,4 +1210,18 @@ func pickOneWriteOrCreatePath(events []fsnotify.Event) string {
 	}
 
 	return name
+}
+
+func formatByteCount(b uint64) string {
+	const unit = 1000
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB",
+		float64(b)/float64(div), "kMGTPE"[exp])
 }

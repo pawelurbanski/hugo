@@ -20,7 +20,7 @@ import (
 
 	"github.com/gohugoio/hugo/markup/rst"
 
-	"github.com/gohugoio/hugo/markup/asciidoc"
+	"github.com/gohugoio/hugo/markup/asciidocext"
 
 	"github.com/gohugoio/hugo/config"
 
@@ -377,7 +377,7 @@ func testAllMarkdownEnginesForPages(t *testing.T,
 	}{
 		{"md", func() bool { return true }},
 		{"mmark", func() bool { return true }},
-		{"ad", func() bool { return asciidoc.Supports() }},
+		{"ad", func() bool { return asciidocext.Supports() }},
 		{"rst", func() bool { return rst.Supports() }},
 	}
 
@@ -481,7 +481,7 @@ categories: ["cool stuff"]
 	s := b.H.Sites[0]
 
 	checkDate := func(t time.Time, msg string) {
-		b.Assert(t.Year(), qt.Equals, 2017)
+		b.Assert(t.Year(), qt.Equals, 2017, qt.Commentf(msg))
 	}
 
 	checkDated := func(d resource.Dated, msg string) {
@@ -504,30 +504,54 @@ func TestPageDatesSections(t *testing.T) {
 title: Page
 date: 2017-01-15
 ---
-`)
-	b.WithSimpleConfigFile().WithContent("with-index-no-date/_index.md", `---
+`, "with-index-no-date/_index.md", `---
 title: No Date
 ---
 
-`)
+`,
+		// https://github.com/gohugoio/hugo/issues/5854
+		"with-index-date/_index.md", `---
+title: Date
+date: 2018-01-15
+---
 
-	// https://github.com/gohugoio/hugo/issues/5854
-	b.WithSimpleConfigFile().WithContent("with-index-date/_index.md", `---
+`, "with-index-date/p1.md", `---
+title: Date
+date: 2018-01-15
+---
+
+`, "with-index-date/p1.md", `---
 title: Date
 date: 2018-01-15
 ---
 
 `)
 
+	for i := 1; i <= 20; i++ {
+		b.WithContent(fmt.Sprintf("main-section/p%d.md", i), `---
+title: Date
+date: 2012-01-12
+---
+
+`)
+	}
+
 	b.CreateSites().Build(BuildCfg{})
 
 	b.Assert(len(b.H.Sites), qt.Equals, 1)
 	s := b.H.Sites[0]
 
-	b.Assert(s.getPage("/").Date().Year(), qt.Equals, 2017)
-	b.Assert(s.getPage("/no-index").Date().Year(), qt.Equals, 2017)
+	checkDate := func(p page.Page, year int) {
+		b.Assert(p.Date().Year(), qt.Equals, year)
+		b.Assert(p.Lastmod().Year(), qt.Equals, year)
+	}
+
+	checkDate(s.getPage("/"), 2018)
+	checkDate(s.getPage("/no-index"), 2017)
 	b.Assert(s.getPage("/with-index-no-date").Date().IsZero(), qt.Equals, true)
-	b.Assert(s.getPage("/with-index-date").Date().Year(), qt.Equals, 2018)
+	checkDate(s.getPage("/with-index-date"), 2018)
+
+	b.Assert(s.Site.LastChange().Year(), qt.Equals, 2018)
 }
 
 func TestCreateNewPage(t *testing.T) {
@@ -702,7 +726,7 @@ func TestTableOfContents(t *testing.T) {
 
 	p := s.RegularPages()[0]
 
-	checkPageContent(t, p, "<p>For some moments the old man did not reply. He stood with bowed head, buried in deep thought. But at last he spoke.</p><h2 id=\"aa\">AA</h2> <p>I have no idea, of course, how long it took me to reach the limit of the plain, but at last I entered the foothills, following a pretty little canyon upward toward the mountains. Beside me frolicked a laughing brooklet, hurrying upon its noisy way down to the silent sea. In its quieter pools I discovered many small fish, of four-or five-pound weight I should imagine. In appearance, except as to size and color, they were not unlike the whale of our own seas. As I watched them playing about I discovered, not only that they suckled their young, but that at intervals they rose to the surface to breathe as well as to feed upon certain grasses and a strange, scarlet lichen which grew upon the rocks just above the water line.</p><h3 id=\"aaa\">AAA</h3> <p>I remember I felt an extraordinary persuasion that I was being played with, that presently, when I was upon the very verge of safety, this mysterious death&ndash;as swift as the passage of light&ndash;would leap after me from the pit about the cylinder and strike me down. ## BB</p><h3 id=\"bbb\">BBB</h3> <p>&ldquo;You're a great Granser,&rdquo; he cried delightedly, &ldquo;always making believe them little marks mean something.&rdquo;</p>")
+	checkPageContent(t, p, "<p>For some moments the old man did not reply. He stood with bowed head, buried in deep thought. But at last he spoke.</p><h2 id=\"aa\">AA</h2> <p>I have no idea, of course, how long it took me to reach the limit of the plain, but at last I entered the foothills, following a pretty little canyon upward toward the mountains. Beside me frolicked a laughing brooklet, hurrying upon its noisy way down to the silent sea. In its quieter pools I discovered many small fish, of four-or five-pound weight I should imagine. In appearance, except as to size and color, they were not unlike the whale of our own seas. As I watched them playing about I discovered, not only that they suckled their young, but that at intervals they rose to the surface to breathe as well as to feed upon certain grasses and a strange, scarlet lichen which grew upon the rocks just above the water line.</p><h3 id=\"aaa\">AAA</h3> <p>I remember I felt an extraordinary persuasion that I was being played with, that presently, when I was upon the very verge of safety, this mysterious death&ndash;as swift as the passage of light&ndash;would leap after me from the pit about the cylinder and strike me down. ## BB</p><h3 id=\"bbb\">BBB</h3> <p>&ldquo;You&rsquo;re a great Granser,&rdquo; he cried delightedly, &ldquo;always making believe them little marks mean something.&rdquo;</p>")
 	checkPageTOC(t, p, "<nav id=\"TableOfContents\">\n  <ul>\n    <li><a href=\"#aa\">AA</a>\n      <ul>\n        <li><a href=\"#aaa\">AAA</a></li>\n        <li><a href=\"#bbb\">BBB</a></li>\n      </ul>\n    </li>\n  </ul>\n</nav>")
 }
 
@@ -1732,4 +1756,25 @@ $$$
 	b.AssertFileContent("public/page2/index.html",
 		`<pre><code class="language-bash {hl_lines=[1]}" data-lang="bash {hl_lines=[1]}">SHORT`,
 	)
+}
+
+func TestPageCaseIssues(t *testing.T) {
+	t.Parallel()
+
+	b := newTestSitesBuilder(t)
+	b.WithConfigFile("toml", `defaultContentLanguage = "no"
+[languages]
+[languages.NO]
+title = "Norsk"
+`)
+	b.WithContent("a/B/C/Page1.md", "---\ntitle: Page1\n---")
+	b.WithTemplates("index.html", `
+{{ $p1 := site.GetPage "a/B/C/Page1" }}
+Lang: {{ .Lang }}
+Page1: {{ $p1.Path }}
+`)
+
+	b.Build(BuildCfg{})
+
+	b.AssertFileContent("public/index.html", "Lang: no", filepath.FromSlash("Page1: a/B/C/Page1.md"))
 }

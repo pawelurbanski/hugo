@@ -36,7 +36,7 @@ type LanguagesConfig struct {
 
 func LoadLanguageSettings(cfg config.Provider, oldLangs Languages) (c LanguagesConfig, err error) {
 
-	defaultLang := cfg.GetString("defaultContentLanguage")
+	defaultLang := strings.ToLower(cfg.GetString("defaultContentLanguage"))
 	if defaultLang == "" {
 		defaultLang = "en"
 		cfg.Set("defaultContentLanguage", defaultLang)
@@ -185,6 +185,8 @@ func toSortedLanguages(cfg config.Provider, l map[string]interface{}) (Languages
 				language.Title = cast.ToString(v)
 			case "languagename":
 				language.LanguageName = cast.ToString(v)
+			case "languagedirection":
+				language.LanguageDirection = cast.ToString(v)
 			case "weight":
 				language.Weight = cast.ToInt(v)
 			case "contentdir":

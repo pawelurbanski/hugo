@@ -18,6 +18,7 @@ import (
 	"io"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -292,6 +293,19 @@ func (c *ResourceCache) DeletePartitions(partitions ...string) {
 		if clear {
 			delete(c.cache, k)
 		}
+	}
+
+}
+
+func (c *ResourceCache) DeleteMatches(re *regexp.Regexp) {
+	c.Lock()
+	defer c.Unlock()
+
+	for k := range c.cache {
+		if re.MatchString(k) {
+			delete(c.cache, k)
+		}
+
 	}
 
 }

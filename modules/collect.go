@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -123,11 +124,11 @@ type ModulesConfig struct {
 	GoModulesFilename string
 }
 
-func (m *ModulesConfig) setActiveMods(logger *loggers.Logger) error {
+func (m *ModulesConfig) setActiveMods(logger loggers.Logger) error {
 	var activeMods Modules
 	for _, mod := range m.AllModules {
 		if !mod.Config().HugoVersion.IsValid() {
-			logger.WARN.Printf(`Module %q is not compatible with this Hugo version; run "hugo mod graph" for more information.`, mod.Path())
+			logger.Warnf(`Module %q is not compatible with this Hugo version; run "hugo mod graph" for more information.`, mod.Path())
 		}
 		if !mod.Disabled() {
 			activeMods = append(activeMods, mod)
@@ -139,7 +140,7 @@ func (m *ModulesConfig) setActiveMods(logger *loggers.Logger) error {
 	return nil
 }
 
-func (m *ModulesConfig) finalize(logger *loggers.Logger) error {
+func (m *ModulesConfig) finalize(logger loggers.Logger) error {
 	for _, mod := range m.AllModules {
 		m := mod.(*moduleAdapter)
 		m.mounts = filterUnwantedMounts(m.mounts)
@@ -196,7 +197,8 @@ func (c *collector) initModules() error {
 		gomods:   goModules{},
 	}
 
-	if !c.ccfg.IgnoreVendor && c.isVendored(c.ccfg.WorkingDir) {
+	// If both these are true, we don't even need Go installed to build.
+	if c.ccfg.IgnoreVendor == nil && c.isVendored(c.ccfg.WorkingDir) {
 		return nil
 	}
 
@@ -229,7 +231,7 @@ func (c *collector) add(owner *moduleAdapter, moduleImport Import, disabled bool
 	modulePath := moduleImport.Path
 	var realOwner Module = owner
 
-	if !c.ccfg.IgnoreVendor {
+	if !c.ccfg.shouldIgnoreVendor(modulePath) {
 		if err := c.collectModulesTXT(owner); err != nil {
 			return nil, err
 		}
@@ -272,10 +274,14 @@ func (c *collector) add(owner *moduleAdapter, moduleImport Import, disabled bool
 				}
 			}
 
-			// Fall back to /themes/<mymodule>
+			// Fall back to project/themes/<mymodule>
 			if moduleDir == "" {
-				moduleDir = filepath.Join(c.ccfg.ThemesDir, modulePath)
-
+				var err error
+				moduleDir, err = c.createThemeDirname(modulePath, owner.projectMod)
+				if err != nil {
+					c.err = err
+					return nil, nil
+				}
 				if found, _ := afero.Exists(c.fs, moduleDir); !found {
 					c.err = c.wrapModuleNotFound(errors.Errorf(`module %q not found; either add it as a Hugo Module or store it in %q.`, modulePath, c.ccfg.ThemesDir))
 					return nil, nil
@@ -338,7 +344,7 @@ func (c *collector) addAndRecurse(owner *moduleAdapter, disabled bool) error {
 			if err != nil {
 				return err
 			}
-			if tc == nil {
+			if tc == nil || moduleImport.IgnoreImports {
 				continue
 			}
 			if err := c.addAndRecurse(tc, disabled); err != nil {
@@ -381,6 +387,11 @@ func (c *collector) applyMounts(moduleImport Import, mod *moduleAdapter) error {
 		return err
 	}
 
+	mounts, err = c.mountCommonJSConfig(mod, mounts)
+	if err != nil {
+		return err
+	}
+
 	mod.mounts = mounts
 	return nil
 }
@@ -415,7 +426,7 @@ func (c *collector) applyThemeConfig(tc *moduleAdapter) error {
 		}
 		themeCfg, err = metadecoders.Default.UnmarshalToMap(data, metadecoders.TOML)
 		if err != nil {
-			c.logger.WARN.Printf("Failed to read module config for %q in %q: %s", tc.Path(), themeTOML, err)
+			c.logger.Warnf("Failed to read module config for %q in %q: %s", tc.Path(), themeTOML, err)
 		} else {
 			maps.ToLower(themeCfg)
 		}
@@ -434,7 +445,7 @@ func (c *collector) applyThemeConfig(tc *moduleAdapter) error {
 		tc.cfg = cfg
 	}
 
-	config, err := DecodeConfig(cfg)
+	config, err := decodeConfig(cfg, c.moduleConfig.replacementsMap)
 	if err != nil {
 		return err
 	}
@@ -473,7 +484,7 @@ func (c *collector) collect() {
 	defer c.logger.PrintTimerIfDelayed(time.Now(), "hugo: collected modules")
 	d := debounce.New(2 * time.Second)
 	d(func() {
-		c.logger.FEEDBACK.Println("hugo: downloading modules …")
+		c.logger.Println("hugo: downloading modules …")
 	})
 	defer d(func() {})
 
@@ -548,6 +559,43 @@ func (c *collector) loadModules() error {
 	return nil
 }
 
+// Matches postcss.config.js etc.
+var commonJSConfigs = regexp.MustCompile(`(babel|postcss|tailwind)\.config\.js`)
+
+func (c *collector) mountCommonJSConfig(owner *moduleAdapter, mounts []Mount) ([]Mount, error) {
+	for _, m := range mounts {
+		if strings.HasPrefix(m.Target, files.JsConfigFolderMountPrefix) {
+			// This follows the convention of the other component types (assets, content, etc.),
+			// if one or more is specificed by the user, we skip the defaults.
+			// These mounts were added to Hugo in 0.75.
+			return mounts, nil
+		}
+	}
+
+	// Mount the common JS config files.
+	fis, err := afero.ReadDir(c.fs, owner.Dir())
+	if err != nil {
+		return mounts, err
+	}
+
+	for _, fi := range fis {
+		n := fi.Name()
+
+		should := n == files.FilenamePackageHugoJSON || n == files.FilenamePackageJSON
+		should = should || commonJSConfigs.MatchString(n)
+
+		if should {
+			mounts = append(mounts, Mount{
+				Source: n,
+				Target: filepath.Join(files.ComponentFolderAssets, files.FolderJSConfig, n),
+			})
+		}
+
+	}
+
+	return mounts, nil
+}
+
 func (c *collector) normalizeMounts(owner *moduleAdapter, mounts []Mount) ([]Mount, error) {
 	var out []Mount
 	dir := owner.Dir()
@@ -561,7 +609,6 @@ func (c *collector) normalizeMounts(owner *moduleAdapter, mounts []Mount) ([]Mou
 
 		mnt.Source = filepath.Clean(mnt.Source)
 		mnt.Target = filepath.Clean(mnt.Target)
-
 		var sourceDir string
 
 		if owner.projectMod && filepath.IsAbs(mnt.Source) {

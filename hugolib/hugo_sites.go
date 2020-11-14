@@ -14,11 +14,15 @@
 package hugolib
 
 import (
+	"context"
 	"io"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
+
+	"github.com/fsnotify/fsnotify"
 
 	"github.com/gohugoio/hugo/identity"
 
@@ -27,8 +31,8 @@ import (
 	"github.com/gohugoio/hugo/output"
 	"github.com/gohugoio/hugo/parser/metadecoders"
 
+	"github.com/gohugoio/hugo/common/para"
 	"github.com/gohugoio/hugo/hugofs"
-
 	"github.com/pkg/errors"
 
 	"github.com/gohugoio/hugo/source"
@@ -47,6 +51,7 @@ import (
 
 	"github.com/gohugoio/hugo/langs/i18n"
 	"github.com/gohugoio/hugo/resources/page"
+	"github.com/gohugoio/hugo/resources/page/pagemeta"
 	"github.com/gohugoio/hugo/tpl"
 	"github.com/gohugoio/hugo/tpl/tplimpl"
 )
@@ -76,12 +81,50 @@ type HugoSites struct {
 	// As loaded from the /data dirs
 	data map[string]interface{}
 
+	contentInit sync.Once
+	content     *pageMaps
+
 	// Keeps track of bundle directories and symlinks to enable partial rebuilding.
 	ContentChanges *contentChangeMap
 
+	// File change events with filename stored in this map will be skipped.
+	skipRebuildForFilenamesMu sync.Mutex
+	skipRebuildForFilenames   map[string]bool
+
 	init *hugoSitesInit
 
+	workers    *para.Workers
+	numWorkers int
+
 	*fatalErrorHandler
+	*testCounters
+}
+
+// ShouldSkipFileChangeEvent allows skipping filesystem event early before
+// the build is started.
+func (h *HugoSites) ShouldSkipFileChangeEvent(ev fsnotify.Event) bool {
+	h.skipRebuildForFilenamesMu.Lock()
+	defer h.skipRebuildForFilenamesMu.Unlock()
+	return h.skipRebuildForFilenames[ev.Name]
+}
+
+func (h *HugoSites) getContentMaps() *pageMaps {
+	h.contentInit.Do(func() {
+		h.content = newPageMaps(h)
+	})
+	return h.content
+}
+
+// Only used in tests.
+type testCounters struct {
+	contentRenderCounter uint64
+}
+
+func (h *testCounters) IncrContentRender() {
+	if h == nil {
+		return
+	}
+	atomic.AddUint64(&h.contentRenderCounter, 1)
 }
 
 type fatalErrorHandler struct {
@@ -121,6 +164,9 @@ type hugoSitesInit struct {
 	// Loads the data from all of the /data folders.
 	data *lazy.Init
 
+	// Performs late initialization (before render) of the templates.
+	layouts *lazy.Init
+
 	// Loads the Git info for all the pages if enabled.
 	gitInfo *lazy.Init
 
@@ -130,6 +176,7 @@ type hugoSitesInit struct {
 
 func (h *hugoSitesInit) Reset() {
 	h.data.Reset()
+	h.layouts.Reset()
 	h.gitInfo.Reset()
 	h.translations.Reset()
 }
@@ -157,7 +204,7 @@ func (h *HugoSites) gitInfoForPage(p page.Page) (*gitmap.GitInfo, error) {
 func (h *HugoSites) siteInfos() page.Sites {
 	infos := make(page.Sites, len(h.Sites))
 	for i, site := range h.Sites {
-		infos[i] = &site.Info
+		infos[i] = site.Info
 	}
 	return infos
 }
@@ -190,7 +237,7 @@ func (h *HugoSites) pickOneAndLogTheRest(errors []error) error {
 			break
 		}
 
-		h.Log.ERROR.Println(err)
+		h.Log.Errorln(err)
 	}
 
 	return errors[i]
@@ -213,7 +260,7 @@ func (h *HugoSites) NumLogErrors() int {
 	if h == nil {
 		return 0
 	}
-	return int(h.Log.ErrorCounter.Count())
+	return int(h.Log.LogCounters().ErrorCounter.Count())
 }
 
 func (h *HugoSites) PrintProcessingStats(w io.Writer) {
@@ -227,25 +274,22 @@ func (h *HugoSites) PrintProcessingStats(w io.Writer) {
 // GetContentPage finds a Page with content given the absolute filename.
 // Returns nil if none found.
 func (h *HugoSites) GetContentPage(filename string) page.Page {
-	for _, s := range h.Sites {
-		pos := s.rawAllPages.findPagePosByFilename(filename)
-		if pos == -1 {
-			continue
-		}
-		return s.rawAllPages[pos]
-	}
+	var p page.Page
 
-	// If not found already, this may be bundled in another content file.
-	dir := filepath.Dir(filename)
-
-	for _, s := range h.Sites {
-		pos := s.rawAllPages.findPagePosByFilnamePrefix(dir)
-		if pos == -1 {
-			continue
+	h.getContentMaps().walkBundles(func(b *contentNode) bool {
+		if b.p == nil || b.fi == nil {
+			return false
 		}
-		return s.rawAllPages[pos]
-	}
-	return nil
+
+		if b.fi.Meta().Filename() == filename {
+			p = b.p
+			return true
+		}
+
+		return false
+	})
+
+	return p
 }
 
 // NewHugoSites creates a new collection of sites given the input sites, building
@@ -264,13 +308,26 @@ func newHugoSites(cfg deps.DepsCfg, sites ...*Site) (*HugoSites, error) {
 
 	var contentChangeTracker *contentChangeMap
 
+	numWorkers := config.GetNumWorkerMultiplier()
+	if numWorkers > len(sites) {
+		numWorkers = len(sites)
+	}
+	var workers *para.Workers
+	if numWorkers > 1 {
+		workers = para.New(numWorkers)
+	}
+
 	h := &HugoSites{
-		running:      cfg.Running,
-		multilingual: langConfig,
-		multihost:    cfg.Cfg.GetBool("multihost"),
-		Sites:        sites,
+		running:                 cfg.Running,
+		multilingual:            langConfig,
+		multihost:               cfg.Cfg.GetBool("multihost"),
+		Sites:                   sites,
+		workers:                 workers,
+		numWorkers:              numWorkers,
+		skipRebuildForFilenames: make(map[string]bool),
 		init: &hugoSitesInit{
 			data:         lazy.New(),
+			layouts:      lazy.New(),
 			gitInfo:      lazy.New(),
 			translations: lazy.New(),
 		},
@@ -285,6 +342,15 @@ func newHugoSites(cfg deps.DepsCfg, sites ...*Site) (*HugoSites, error) {
 		err := h.loadData(h.PathSpec.BaseFs.Data.Dirs)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to load data")
+		}
+		return nil, nil
+	})
+
+	h.init.layouts.Add(func() (interface{}, error) {
+		for _, s := range h.Sites {
+			if err := s.Tmpl().(tpl.TemplateManager).MarkReady(); err != nil {
+				return nil, err
+			}
 		}
 		return nil, nil
 	})
@@ -335,7 +401,7 @@ func (h *HugoSites) loadGitInfo() error {
 	if h.Cfg.GetBool("enableGitInfo") {
 		gi, err := newGitInfo(h.Cfg)
 		if err != nil {
-			h.Log.ERROR.Println("Failed to read Git log:", err)
+			h.Log.Errorln("Failed to read Git log:", err)
 		} else {
 			h.gitInfo = gi
 		}
@@ -366,19 +432,42 @@ func applyDeps(cfg deps.DepsCfg, sites ...*Site) error {
 			s.Deps = d
 
 			// Set up the main publishing chain.
-			s.publisher = publisher.NewDestinationPublisher(d.PathSpec.BaseFs.PublishFs, s.outputFormatsConfig, s.mediaTypesConfig, cfg.Cfg.GetBool("minify"))
+			pub, err := publisher.NewDestinationPublisher(
+				d.ResourceSpec,
+				s.outputFormatsConfig,
+				s.mediaTypesConfig,
+			)
+
+			if err != nil {
+				return err
+			}
+			s.publisher = pub
 
 			if err := s.initializeSiteInfo(); err != nil {
 				return err
 			}
 
-			d.Site = &s.Info
+			d.Site = s.Info
 
 			siteConfig, err := loadSiteConfig(s.language)
 			if err != nil {
 				return errors.Wrap(err, "load site config")
 			}
 			s.siteConfigConfig = siteConfig
+
+			pm := &pageMap{
+				contentMap: newContentMap(contentMapConfig{
+					lang:                 s.Lang(),
+					taxonomyConfig:       s.siteCfg.taxonomiesConfig.Values(),
+					taxonomyDisabled:     !s.isEnabled(page.KindTerm),
+					taxonomyTermDisabled: !s.isEnabled(page.KindTaxonomy),
+					pageDisabled:         !s.isEnabled(page.KindPage),
+				}),
+				s: s,
+			}
+
+			s.PageCollections = newPageCollections(pm)
+
 			s.siteRefLinker, err = newSiteRefLinker(s.language, s)
 			return err
 		}
@@ -420,6 +509,9 @@ func applyDeps(cfg deps.DepsCfg, sites ...*Site) error {
 
 // NewHugoSites creates HugoSites from the given config.
 func NewHugoSites(cfg deps.DepsCfg) (*HugoSites, error) {
+	if cfg.Logger == nil {
+		cfg.Logger = loggers.NewErrorLogger()
+	}
 	sites, err := createSitesFromConfig(cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "from config")
@@ -429,10 +521,6 @@ func NewHugoSites(cfg deps.DepsCfg) (*HugoSites, error) {
 
 func (s *Site) withSiteTemplates(withTemplates ...func(templ tpl.TemplateManager) error) func(templ tpl.TemplateManager) error {
 	return func(templ tpl.TemplateManager) error {
-		if err := templ.LoadTemplates(""); err != nil {
-			return err
-		}
-
 		for _, wt := range withTemplates {
 			if wt == nil {
 				continue
@@ -497,8 +585,28 @@ func (h *HugoSites) resetLogs() {
 	h.Log.Reset()
 	loggers.GlobalErrorCounter.Reset()
 	for _, s := range h.Sites {
-		s.Deps.DistinctErrorLog = helpers.NewDistinctLogger(h.Log.ERROR)
+		s.Deps.DistinctErrorLog = helpers.NewDistinctLogger(h.Log.Error())
 	}
+}
+
+func (h *HugoSites) withSite(fn func(s *Site) error) error {
+	if h.workers == nil {
+		for _, s := range h.Sites {
+			if err := fn(s); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	g, _ := h.workers.Start(context.Background())
+	for _, s := range h.Sites {
+		s := s
+		g.Run(func() error {
+			return fn(s)
+		})
+	}
+	return g.Wait()
 }
 
 func (h *HugoSites) createSitesFromConfig(cfg config.Provider) error {
@@ -543,7 +651,7 @@ func (h *HugoSites) createSitesFromConfig(cfg config.Provider) error {
 func (h *HugoSites) toSiteInfos() []*SiteInfo {
 	infos := make([]*SiteInfo, len(h.Sites))
 	for i, s := range h.Sites {
-		infos[i] = &s.Info
+		infos[i] = s.Info
 	}
 	return infos
 }
@@ -569,6 +677,8 @@ type BuildCfg struct {
 
 	// Recently visited URLs. This is used for partial re-rendering.
 	RecentlyVisited map[string]bool
+
+	testCounters *testCounters
 }
 
 // shouldRender is used in the Fast Render Mode to determine if we need to re-render
@@ -577,9 +687,6 @@ type BuildCfg struct {
 // For regular builds, this will allways return true.
 // TODO(bep) rename/work this.
 func (cfg *BuildCfg) shouldRender(p *pageState) bool {
-	if !p.render {
-		return false
-	}
 	if p.forceRender {
 		return true
 	}
@@ -599,7 +706,7 @@ func (cfg *BuildCfg) shouldRender(p *pageState) bool {
 	return false
 }
 
-func (h *HugoSites) renderCrossSitesArtifacts() error {
+func (h *HugoSites) renderCrossSitesSitemap() error {
 
 	if !h.multilingual.enabled() || h.IsMultihost() {
 		return nil
@@ -619,16 +726,60 @@ func (h *HugoSites) renderCrossSitesArtifacts() error {
 
 	s := h.Sites[0]
 
-	smLayouts := []string{"sitemapindex.xml", "_default/sitemapindex.xml", "_internal/_default/sitemapindex.xml"}
+	templ := s.lookupLayouts("sitemapindex.xml", "_default/sitemapindex.xml", "_internal/_default/sitemapindex.xml")
 
 	return s.renderAndWriteXML(&s.PathSpec.ProcessingStats.Sitemaps, "sitemapindex",
-		s.siteCfg.sitemap.Filename, h.toSiteInfos(), smLayouts...)
+		s.siteCfg.sitemap.Filename, h.toSiteInfos(), templ)
+}
+
+func (h *HugoSites) renderCrossSitesRobotsTXT() error {
+	if h.multihost {
+		return nil
+	}
+	if !h.Cfg.GetBool("enableRobotsTXT") {
+		return nil
+	}
+
+	s := h.Sites[0]
+
+	p, err := newPageStandalone(&pageMeta{
+		s:    s,
+		kind: kindRobotsTXT,
+		urlPaths: pagemeta.URLPath{
+			URL: "robots.txt",
+		},
+	},
+		output.RobotsTxtFormat)
+
+	if err != nil {
+		return err
+	}
+
+	if !p.render {
+		return nil
+	}
+
+	templ := s.lookupLayouts("robots.txt", "_default/robots.txt", "_internal/_default/robots.txt")
+
+	return s.renderAndWritePage(&s.PathSpec.ProcessingStats.Pages, "Robots Txt", "robots.txt", p, templ)
 }
 
 func (h *HugoSites) removePageByFilename(filename string) {
-	for _, s := range h.Sites {
-		s.removePageFilename(filename)
-	}
+	h.getContentMaps().withMaps(func(m *pageMap) error {
+		m.deleteBundleMatching(func(b *contentNode) bool {
+			if b.p == nil {
+				return false
+			}
+
+			if b.fi == nil {
+				return false
+			}
+
+			return b.fi.Meta().Filename() == filename
+		})
+		return nil
+	})
+
 }
 
 func (h *HugoSites) createPageCollections() error {
@@ -657,19 +808,13 @@ func (h *HugoSites) createPageCollections() error {
 }
 
 func (s *Site) preparePagesForRender(isRenderingSite bool, idx int) error {
-
-	for _, p := range s.workAllPages {
-		if err := p.initOutputFormat(isRenderingSite, idx); err != nil {
-			return err
+	var err error
+	s.pageMap.withEveryBundlePage(func(p *pageState) bool {
+		if err = p.initOutputFormat(isRenderingSite, idx); err != nil {
+			return true
 		}
-	}
-
-	for _, p := range s.headlessPages {
-		if err := p.initOutputFormat(isRenderingSite, idx); err != nil {
-			return err
-		}
-	}
-
+		return false
+	})
 	return nil
 }
 
@@ -749,14 +894,14 @@ func (h *HugoSites) handleDataFile(r source.File) error {
 					// 1. A theme uses the same key; the main data folder wins
 					// 2. A sub folder uses the same key: the sub folder wins
 					// TODO(bep) figure out a way to detect 2) above and make that a WARN
-					h.Log.INFO.Printf("Data for key '%s' in path '%s' is overridden by higher precedence data already in the data tree", key, r.Path())
+					h.Log.Infof("Data for key '%s' in path '%s' is overridden by higher precedence data already in the data tree", key, r.Path())
 				} else {
 					higherPrecedentMap[key] = value
 				}
 			}
 		default:
 			// can't merge: higherPrecedentData is not a map
-			h.Log.WARN.Printf("The %T data from '%s' overridden by "+
+			h.Log.Warnf("The %T data from '%s' overridden by "+
 				"higher precedence %T data already in the data tree", data, r.Path(), higherPrecedentData)
 		}
 
@@ -765,12 +910,12 @@ func (h *HugoSites) handleDataFile(r source.File) error {
 			current[r.BaseFileName()] = data
 		} else {
 			// we don't merge array data
-			h.Log.WARN.Printf("The %T data from '%s' overridden by "+
+			h.Log.Warnf("The %T data from '%s' overridden by "+
 				"higher precedence %T data already in the data tree", data, r.Path(), higherPrecedentData)
 		}
 
 	default:
-		h.Log.ERROR.Printf("unexpected data type %T in file %s", data, r.LogicalName())
+		h.Log.Errorf("unexpected data type %T in file %s", data, r.LogicalName())
 	}
 
 	return nil
@@ -811,49 +956,62 @@ func (h *HugoSites) findPagesByKindIn(kind string, inPages page.Pages) page.Page
 }
 
 func (h *HugoSites) resetPageState() {
-	for _, s := range h.Sites {
-		for _, p := range s.rawAllPages {
-			for _, po := range p.pageOutputs {
-				if po.cp == nil {
-					continue
-				}
-				po.cp.Reset()
-			}
+	h.getContentMaps().walkBundles(func(n *contentNode) bool {
+		if n.p == nil {
+			return false
 		}
-	}
+		p := n.p
+		for _, po := range p.pageOutputs {
+			if po.cp == nil {
+				continue
+			}
+			po.cp.Reset()
+		}
+
+		return false
+	})
 }
 
 func (h *HugoSites) resetPageStateFromEvents(idset identity.Identities) {
-	for _, s := range h.Sites {
-	PAGES:
-		for _, p := range s.rawAllPages {
-		OUTPUTS:
-			for _, po := range p.pageOutputs {
-				if po.cp == nil {
-					continue
-				}
-				for id, _ := range idset {
-					if po.cp.dependencyTracker.Search(id) != nil {
-						po.cp.Reset()
-						continue OUTPUTS
-					}
+	h.getContentMaps().walkBundles(func(n *contentNode) bool {
+		if n.p == nil {
+			return false
+		}
+		p := n.p
+	OUTPUTS:
+		for _, po := range p.pageOutputs {
+			if po.cp == nil {
+				continue
+			}
+			for id := range idset {
+				if po.cp.dependencyTracker.Search(id) != nil {
+					po.cp.Reset()
+					continue OUTPUTS
 				}
 			}
+		}
 
-			for _, s := range p.shortcodeState.shortcodes {
-				for id, _ := range idset {
-					if idm, ok := s.info.(identity.Manager); ok && idm.Search(id) != nil {
+		if p.shortcodeState == nil {
+			return false
+		}
+
+		for _, s := range p.shortcodeState.shortcodes {
+			for _, templ := range s.templs {
+				sid := templ.(identity.Manager)
+				for id := range idset {
+					if sid.Search(id) != nil {
 						for _, po := range p.pageOutputs {
 							if po.cp != nil {
 								po.cp.Reset()
 							}
 						}
-						continue PAGES
+						return false
 					}
 				}
 			}
 		}
-	}
+		return false
+	})
 }
 
 // Used in partial reloading to determine if the change is in a bundle.
@@ -890,6 +1048,7 @@ func (m *contentChangeMap) add(dirname string, tp bundleDirType) {
 	case bundleLeaf:
 		m.leafBundles.Insert(dirname, true)
 	default:
+		m.mu.Unlock()
 		panic("invalid bundle type")
 	}
 	m.mu.Unlock()

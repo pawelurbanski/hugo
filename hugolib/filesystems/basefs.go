@@ -49,6 +49,9 @@ type BaseFs struct {
 	// SourceFilesystems contains the different source file systems.
 	*SourceFilesystems
 
+	// The project source.
+	SourceFs afero.Fs
+
 	// The filesystem used to publish the rendered site.
 	// This usually maps to /my-project/public.
 	PublishFs afero.Fs
@@ -98,6 +101,23 @@ func (b *BaseFs) RelContentDir(filename string) string {
 	}
 	// Either not a content dir or already relative.
 	return filename
+}
+
+// ResolveJSConfigFile resolves the JS-related config file to a absolute
+// filename. One example of such would be postcss.config.js.
+func (fs *BaseFs) ResolveJSConfigFile(name string) string {
+	// First look in assets/_jsconfig
+	fi, err := fs.Assets.Fs.Stat(filepath.Join(files.FolderJSConfig, name))
+	if err == nil {
+		return fi.(hugofs.FileMetaInfo).Meta().Filename()
+	}
+	// Fall back to the work dir.
+	fi, err = fs.Work.Stat(name)
+	if err == nil {
+		return fi.(hugofs.FileMetaInfo).Meta().Filename()
+	}
+
+	return ""
 }
 
 // SourceFilesystems contains the different source file systems. These can be
@@ -247,7 +267,7 @@ func (s SourceFilesystems) IsI18n(filename string) bool {
 // It will return an empty string if the filename is not a member of a static filesystem.
 func (s SourceFilesystems) MakeStaticPathRelative(filename string) string {
 	for _, staticFs := range s.Static {
-		rel := staticFs.MakePathRelative(filename)
+		rel, _ := staticFs.MakePathRelative(filename)
 		if rel != "" {
 			return rel
 		}
@@ -256,8 +276,8 @@ func (s SourceFilesystems) MakeStaticPathRelative(filename string) string {
 }
 
 // MakePathRelative creates a relative path from the given filename.
-// It will return an empty string if the filename is not a member of this filesystem.
-func (d *SourceFilesystem) MakePathRelative(filename string) string {
+func (d *SourceFilesystem) MakePathRelative(filename string) (string, bool) {
+
 	for _, dir := range d.Dirs {
 		meta := dir.(hugofs.FileMetaInfo).Meta()
 		currentPath := meta.Filename()
@@ -267,10 +287,10 @@ func (d *SourceFilesystem) MakePathRelative(filename string) string {
 			if mp := meta.Path(); mp != "" {
 				rel = filepath.Join(mp, rel)
 			}
-			return strings.TrimPrefix(rel, filePathSeparator)
+			return strings.TrimPrefix(rel, filePathSeparator), true
 		}
 	}
-	return ""
+	return "", false
 }
 
 func (d *SourceFilesystem) RealFilename(rel string) string {
@@ -295,21 +315,16 @@ func (d *SourceFilesystem) Contains(filename string) bool {
 	return false
 }
 
-// Path returns the relative path to the given filename if it is a member of
+// Path returns the mount relative path to the given filename if it is a member of
 // of the current filesystem, an empty string if not.
 func (d *SourceFilesystem) Path(filename string) string {
 	for _, dir := range d.Dirs {
 		meta := dir.Meta()
-		if !dir.IsDir() {
-			if filename == meta.Filename() {
-				return meta.PathFile()
-			}
-			continue
-		}
-
 		if strings.HasPrefix(filename, meta.Filename()) {
 			p := strings.TrimPrefix(strings.TrimPrefix(filename, meta.Filename()), filePathSeparator)
-			p = path.Join(meta.PathFile(), p)
+			if mountRoot := meta.MountRoot(); mountRoot != "" {
+				return filepath.Join(mountRoot, p)
+			}
 			return p
 		}
 	}
@@ -343,15 +358,17 @@ func WithBaseFs(b *BaseFs) func(*BaseFs) error {
 }
 
 // NewBase builds the filesystems used by Hugo given the paths and options provided.NewBase
-func NewBase(p *paths.Paths, logger *loggers.Logger, options ...func(*BaseFs) error) (*BaseFs, error) {
+func NewBase(p *paths.Paths, logger loggers.Logger, options ...func(*BaseFs) error) (*BaseFs, error) {
 	fs := p.Fs
 	if logger == nil {
 		logger = loggers.NewWarningLogger()
 	}
 
-	publishFs := afero.NewBasePathFs(fs.Destination, p.AbsPublishDir)
+	publishFs := hugofs.NewBaseFileDecorator(afero.NewBasePathFs(fs.Destination, p.AbsPublishDir))
+	sourceFs := hugofs.NewBaseFileDecorator(afero.NewBasePathFs(fs.Source, p.WorkingDir))
 
 	b := &BaseFs{
+		SourceFs:  sourceFs,
 		PublishFs: publishFs,
 	}
 
@@ -378,14 +395,14 @@ func NewBase(p *paths.Paths, logger *loggers.Logger, options ...func(*BaseFs) er
 }
 
 type sourceFilesystemsBuilder struct {
-	logger   *loggers.Logger
+	logger   loggers.Logger
 	p        *paths.Paths
 	sourceFs afero.Fs
 	result   *SourceFilesystems
 	theBigFs *filesystemsCollector
 }
 
-func newSourceFilesystemsBuilder(p *paths.Paths, logger *loggers.Logger, b *BaseFs) *sourceFilesystemsBuilder {
+func newSourceFilesystemsBuilder(p *paths.Paths, logger loggers.Logger, b *BaseFs) *sourceFilesystemsBuilder {
 	sourceFs := hugofs.NewBaseFileDecorator(p.Fs.Source)
 	return &sourceFilesystemsBuilder{p: p, logger: logger, sourceFs: sourceFs, theBigFs: b.theBigFs, result: &SourceFilesystems{}}
 }
@@ -560,6 +577,7 @@ func (b *sourceFilesystemsBuilder) createModFs(
 			From:      mount.Target,
 			To:        filename,
 			ToBasedir: base,
+			Module:    md.Module.Path(),
 			Meta: hugofs.FileMeta{
 				"watch":       md.Watch(),
 				"mountWeight": mountWeight,
@@ -699,11 +717,16 @@ type filesystemsCollector struct {
 
 func (c *filesystemsCollector) addDirs(rfs *hugofs.RootMappingFs) {
 	for _, componentFolder := range files.ComponentFolders {
-		dirs, err := rfs.Dirs(componentFolder)
+		c.addDir(rfs, componentFolder)
+	}
 
-		if err == nil {
-			c.overlayDirs[componentFolder] = append(c.overlayDirs[componentFolder], dirs...)
-		}
+}
+
+func (c *filesystemsCollector) addDir(rfs *hugofs.RootMappingFs, componentFolder string) {
+	dirs, err := rfs.Dirs(componentFolder)
+
+	if err == nil {
+		c.overlayDirs[componentFolder] = append(c.overlayDirs[componentFolder], dirs...)
 	}
 }
 

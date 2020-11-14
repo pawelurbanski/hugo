@@ -19,6 +19,11 @@ import (
 	"html/template"
 	"time"
 
+	"github.com/gohugoio/hugo/identity"
+
+	"github.com/gohugoio/hugo/hugofs/files"
+	"github.com/gohugoio/hugo/tpl"
+
 	"github.com/gohugoio/hugo/hugofs"
 
 	"github.com/bep/gitmap"
@@ -83,7 +88,7 @@ func (p *nopPage) BaseFileName() string {
 	return ""
 }
 
-func (p *nopPage) BundleType() string {
+func (p *nopPage) BundleType() files.ContentClass {
 	return ""
 }
 
@@ -168,7 +173,15 @@ func (p *nopPage) GetPage(ref string) (Page, error) {
 	return nil, nil
 }
 
+func (p *nopPage) GetPageWithTemplateInfo(info tpl.Info, ref string) (Page, error) {
+	return nil, nil
+}
+
 func (p *nopPage) GetParam(key string) interface{} {
+	return nil
+}
+
+func (p *nopPage) GetTerms(taxonomy string) Pages {
 	return nil
 }
 
@@ -285,6 +298,10 @@ func (p *nopPage) Pages() Pages {
 }
 
 func (p *nopPage) RegularPages() Pages {
+	return nil
+}
+
+func (p *nopPage) RegularPagesRecursive() Pages {
 	return nil
 }
 
@@ -473,4 +490,8 @@ func (p *nopPage) Weight() int {
 
 func (p *nopPage) WordCount() int {
 	return 0
+}
+
+func (p *nopPage) GetIdentity() identity.Identity {
+	return identity.NewPathIdentity("content", "foo/bar.md")
 }

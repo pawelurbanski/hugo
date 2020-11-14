@@ -3,11 +3,16 @@ package hugolib
 import (
 	"image/jpeg"
 	"io"
+	"math/rand"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"testing"
+	"time"
 	"unicode/utf8"
+
+	"github.com/gohugoio/hugo/htesting"
 
 	"github.com/gohugoio/hugo/output"
 
@@ -62,8 +67,8 @@ type sitesBuilder struct {
 
 	*qt.C
 
-	logger *loggers.Logger
-
+	logger loggers.Logger
+	rnd    *rand.Rand
 	dumper litter.Options
 
 	// Used to test partial rebuilds.
@@ -89,17 +94,22 @@ type sitesBuilder struct {
 
 	addNothing bool
 	// Base data/content
-	contentFilePairs  []string
-	templateFilePairs []string
-	i18nFilePairs     []string
-	dataFilePairs     []string
+	contentFilePairs  []filenameContent
+	templateFilePairs []filenameContent
+	i18nFilePairs     []filenameContent
+	dataFilePairs     []filenameContent
 
 	// Additional data/content.
 	// As in "use the base, but add these on top".
-	contentFilePairsAdded  []string
-	templateFilePairsAdded []string
-	i18nFilePairsAdded     []string
-	dataFilePairsAdded     []string
+	contentFilePairsAdded  []filenameContent
+	templateFilePairsAdded []filenameContent
+	i18nFilePairsAdded     []filenameContent
+	dataFilePairsAdded     []filenameContent
+}
+
+type filenameContent struct {
+	filename string
+	content  string
 }
 
 func newTestSitesBuilder(t testing.TB) *sitesBuilder {
@@ -112,7 +122,8 @@ func newTestSitesBuilder(t testing.TB) *sitesBuilder {
 		Separator:         " ",
 	}
 
-	return &sitesBuilder{T: t, C: qt.New(t), Fs: fs, configFormat: "toml", dumper: litterOptions}
+	return &sitesBuilder{T: t, C: qt.New(t), Fs: fs, configFormat: "toml",
+		dumper: litterOptions, rnd: rand.New(rand.NewSource(time.Now().Unix()))}
 }
 
 func newTestSitesBuilderFromDepsCfg(t testing.TB, d deps.DepsCfg) *sitesBuilder {
@@ -124,7 +135,7 @@ func newTestSitesBuilderFromDepsCfg(t testing.TB, d deps.DepsCfg) *sitesBuilder 
 		Separator:         " ",
 	}
 
-	b := &sitesBuilder{T: t, C: c, depsCfg: d, Fs: d.Fs, dumper: litterOptions}
+	b := &sitesBuilder{T: t, C: c, depsCfg: d, Fs: d.Fs, dumper: litterOptions, rnd: rand.New(rand.NewSource(time.Now().Unix()))}
 	workingDir := d.Cfg.GetString("workingDir")
 
 	b.WithWorkingDir(workingDir)
@@ -143,7 +154,7 @@ func (s *sitesBuilder) WithNothingAdded() *sitesBuilder {
 	return s
 }
 
-func (s *sitesBuilder) WithLogger(logger *loggers.Logger) *sitesBuilder {
+func (s *sitesBuilder) WithLogger(logger loggers.Logger) *sitesBuilder {
 	s.logger = logger
 	return s
 }
@@ -224,6 +235,9 @@ func (s *sitesBuilder) WithSourceFile(filenameContent ...string) *sitesBuilder {
 
 func (s *sitesBuilder) absFilename(filename string) string {
 	filename = filepath.FromSlash(filename)
+	if filepath.IsAbs(filename) {
+		return filename
+	}
 	if s.workingDir != "" && !strings.HasPrefix(filename, s.workingDir) {
 		filename = filepath.Join(s.workingDir, filename)
 	}
@@ -263,9 +277,14 @@ func (s *sitesBuilder) WithSimpleConfigFile() *sitesBuilder {
 
 func (s *sitesBuilder) WithSimpleConfigFileAndBaseURL(baseURL string) *sitesBuilder {
 	s.T.Helper()
-	config := fmt.Sprintf("baseURL = %q", baseURL)
+	return s.WithSimpleConfigFileAndSettings(map[string]interface{}{"baseURL": baseURL})
+}
 
-	config = config + commonConfigSections
+func (s *sitesBuilder) WithSimpleConfigFileAndSettings(settings interface{}) *sitesBuilder {
+	s.T.Helper()
+	var buf bytes.Buffer
+	parser.InterfaceToConfig(settings, metadecoders.TOML, &buf)
+	config := buf.String() + commonConfigSections
 	return s.WithConfigFile("toml", config)
 }
 
@@ -346,43 +365,62 @@ func (s *sitesBuilder) WithSunset(in string) {
 	src.Close()
 }
 
+func (s *sitesBuilder) createFilenameContent(pairs []string) []filenameContent {
+	var slice []filenameContent
+	s.appendFilenameContent(&slice, pairs...)
+	return slice
+}
+
+func (s *sitesBuilder) appendFilenameContent(slice *[]filenameContent, pairs ...string) {
+	if len(pairs)%2 != 0 {
+		panic("file content mismatch")
+	}
+	for i := 0; i < len(pairs); i += 2 {
+		c := filenameContent{
+			filename: pairs[i],
+			content:  pairs[i+1],
+		}
+		*slice = append(*slice, c)
+	}
+}
+
 func (s *sitesBuilder) WithContent(filenameContent ...string) *sitesBuilder {
-	s.contentFilePairs = append(s.contentFilePairs, filenameContent...)
+	s.appendFilenameContent(&s.contentFilePairs, filenameContent...)
 	return s
 }
 
 func (s *sitesBuilder) WithContentAdded(filenameContent ...string) *sitesBuilder {
-	s.contentFilePairsAdded = append(s.contentFilePairsAdded, filenameContent...)
+	s.appendFilenameContent(&s.contentFilePairsAdded, filenameContent...)
 	return s
 }
 
 func (s *sitesBuilder) WithTemplates(filenameContent ...string) *sitesBuilder {
-	s.templateFilePairs = append(s.templateFilePairs, filenameContent...)
+	s.appendFilenameContent(&s.templateFilePairs, filenameContent...)
 	return s
 }
 
 func (s *sitesBuilder) WithTemplatesAdded(filenameContent ...string) *sitesBuilder {
-	s.templateFilePairsAdded = append(s.templateFilePairsAdded, filenameContent...)
+	s.appendFilenameContent(&s.templateFilePairsAdded, filenameContent...)
 	return s
 }
 
 func (s *sitesBuilder) WithData(filenameContent ...string) *sitesBuilder {
-	s.dataFilePairs = append(s.dataFilePairs, filenameContent...)
+	s.appendFilenameContent(&s.dataFilePairs, filenameContent...)
 	return s
 }
 
 func (s *sitesBuilder) WithDataAdded(filenameContent ...string) *sitesBuilder {
-	s.dataFilePairsAdded = append(s.dataFilePairsAdded, filenameContent...)
+	s.appendFilenameContent(&s.dataFilePairsAdded, filenameContent...)
 	return s
 }
 
 func (s *sitesBuilder) WithI18n(filenameContent ...string) *sitesBuilder {
-	s.i18nFilePairs = append(s.i18nFilePairs, filenameContent...)
+	s.appendFilenameContent(&s.i18nFilePairs, filenameContent...)
 	return s
 }
 
 func (s *sitesBuilder) WithI18nAdded(filenameContent ...string) *sitesBuilder {
-	s.i18nFilePairsAdded = append(s.i18nFilePairsAdded, filenameContent...)
+	s.appendFilenameContent(&s.i18nFilePairsAdded, filenameContent...)
 	return s
 }
 
@@ -406,15 +444,18 @@ func (s *sitesBuilder) RemoveFiles(filenames ...string) *sitesBuilder {
 	return s
 }
 
-func (s *sitesBuilder) writeFilePairs(folder string, filenameContent []string) *sitesBuilder {
-	if len(filenameContent)%2 != 0 {
-		s.Fatalf("expect filenameContent for %q in pairs (%d)", folder, len(filenameContent))
-	}
-	for i := 0; i < len(filenameContent); i += 2 {
-		filename, content := filenameContent[i], filenameContent[i+1]
+func (s *sitesBuilder) writeFilePairs(folder string, files []filenameContent) *sitesBuilder {
+	// We have had some "filesystem ordering" bugs that we have not discovered in
+	// our tests running with the in memory filesystem.
+	// That file system is backed by a map so not sure how this helps, but some
+	// randomness in tests doesn't hurt.
+	// TODO(bep) this turns out to be more confusing than helpful.
+	//s.rnd.Shuffle(len(files), func(i, j int) { files[i], files[j] = files[j], files[i] })
+
+	for _, fc := range files {
 		target := folder
 		// TODO(bep) clean  up this magic.
-		if strings.HasPrefix(filename, folder) {
+		if strings.HasPrefix(fc.filename, folder) {
 			target = ""
 		}
 
@@ -422,14 +463,14 @@ func (s *sitesBuilder) writeFilePairs(folder string, filenameContent []string) *
 			target = filepath.Join(s.workingDir, target)
 		}
 
-		writeSource(s.T, s.Fs, filepath.Join(target, filename), content)
+		writeSource(s.T, s.Fs, filepath.Join(target, fc.filename), fc.content)
 	}
 	return s
 }
 
 func (s *sitesBuilder) CreateSites() *sitesBuilder {
 	if err := s.CreateSitesE(); err != nil {
-		herrors.PrintStackTrace(err)
+		herrors.PrintStackTraceFromErr(err)
 		s.Fatalf("Failed to create sites: %s", err)
 	}
 
@@ -569,7 +610,7 @@ func (s *sitesBuilder) build(cfg BuildCfg, shouldFail bool) *sitesBuilder {
 		}
 	}
 	if err != nil && !shouldFail {
-		herrors.PrintStackTrace(err)
+		herrors.PrintStackTraceFromErr(err)
 		s.Fatalf("Build failed: %s", err)
 	} else if err == nil && shouldFail {
 		s.Fatalf("Expected error")
@@ -637,16 +678,17 @@ hello:
 	)
 
 	if len(s.contentFilePairs) == 0 {
-		s.writeFilePairs("content", defaultContent)
+		s.writeFilePairs("content", s.createFilenameContent(defaultContent))
 	}
+
 	if len(s.templateFilePairs) == 0 {
-		s.writeFilePairs("layouts", defaultTemplates)
+		s.writeFilePairs("layouts", s.createFilenameContent(defaultTemplates))
 	}
 	if len(s.dataFilePairs) == 0 {
-		s.writeFilePairs("data", defaultData)
+		s.writeFilePairs("data", s.createFilenameContent(defaultData))
 	}
 	if len(s.i18nFilePairs) == 0 {
-		s.writeFilePairs("i18n", defaultI18n)
+		s.writeFilePairs("i18n", s.createFilenameContent(defaultI18n))
 	}
 }
 
@@ -684,12 +726,19 @@ func (s *sitesBuilder) AssertFileContent(filename string, matches ...string) {
 	}
 }
 
+func (s *sitesBuilder) AssertFileDoesNotExist(filename string) {
+	if s.CheckExists(filename) {
+		s.Fatalf("File %q exists but must not exist.", filename)
+	}
+}
+
 func (s *sitesBuilder) AssertImage(width, height int, filename string) {
 	filename = filepath.Join(s.workingDir, filename)
 	f, err := s.Fs.Destination.Open(filename)
 	s.Assert(err, qt.IsNil)
 	defer f.Close()
 	cfg, err := jpeg.DecodeConfig(f)
+	s.Assert(err, qt.IsNil)
 	s.Assert(cfg.Width, qt.Equals, width)
 	s.Assert(cfg.Height, qt.Equals, height)
 }
@@ -716,7 +765,7 @@ func (s *sitesBuilder) AssertObject(expected string, object interface{}) {
 
 	if expected != got {
 		fmt.Println(got)
-		diff := helpers.DiffStrings(expected, got)
+		diff := htesting.DiffStrings(expected, got)
 		s.Fatalf("diff:\n%s\nexpected\n%s\ngot\n%s", diff, expected, got)
 	}
 }
@@ -733,6 +782,18 @@ func (s *sitesBuilder) AssertFileContentRe(filename string, matches ...string) {
 
 func (s *sitesBuilder) CheckExists(filename string) bool {
 	return destinationExists(s.Fs, filepath.Clean(filename))
+}
+
+func (s *sitesBuilder) GetPage(ref string) page.Page {
+	p, err := s.H.Sites[0].getPageNew(nil, ref)
+	s.Assert(err, qt.IsNil)
+	return p
+}
+
+func (s *sitesBuilder) GetPageRel(p page.Page, ref string) page.Page {
+	p, err := s.H.Sites[0].getPageNew(p, ref)
+	s.Assert(err, qt.IsNil)
+	return p
 }
 
 func newTestHelper(cfg config.Provider, fs *hugofs.Fs, t testing.TB) testHelper {
@@ -931,6 +992,15 @@ func content(c resource.ContentProvider) string {
 	return ccs
 }
 
+func pagesToString(pages ...page.Page) string {
+	var paths []string
+	for _, p := range pages {
+		paths = append(paths, p.Path())
+	}
+	sort.Strings(paths)
+	return strings.Join(paths, "|")
+}
+
 func dumpPages(pages ...page.Page) {
 	fmt.Println("---------")
 	for _, p := range pages {
@@ -972,7 +1042,7 @@ func printStringIndexes(s string) {
 }
 
 func isCI() bool {
-	return os.Getenv("CI") != ""
+	return (os.Getenv("CI") != "" || os.Getenv("CI_LOCAL") != "") && os.Getenv("CIRCLE_BRANCH") == ""
 }
 
 // See https://github.com/golang/go/issues/19280
@@ -990,4 +1060,34 @@ func skipSymlink(t *testing.T) {
 		t.Skip("skip symlink test on local Windows (needs admin)")
 	}
 
+}
+
+func captureStderr(f func() error) (string, error) {
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := f()
+
+	w.Close()
+	os.Stderr = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	return buf.String(), err
+}
+
+func captureStdout(f func() error) (string, error) {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := f()
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	return buf.String(), err
 }

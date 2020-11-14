@@ -34,14 +34,10 @@ func newPagePaths(
 
 	outputFormats := pm.outputFormats()
 	if len(outputFormats) == 0 {
-		outputFormats = pm.s.outputFormats[pm.Kind()]
-	}
-
-	if len(outputFormats) == 0 {
 		return pagePaths{}, nil
 	}
 
-	if pm.headless {
+	if pm.noRender() {
 		outputFormats = outputFormats[:1]
 	}
 
@@ -55,9 +51,11 @@ func newPagePaths(
 
 		var relPermalink, permalink string
 
-		// If a page is headless or bundled in another, it will not get published
-		// on its own and it will have no links.
-		if !pm.headless && !pm.bundled {
+		// If a page is headless or bundled in another,
+		// it will not get published on its own and it will have no links.
+		// We also check the build options if it's set to not render or have
+		// a link.
+		if !pm.noLink() && !pm.bundled {
 			relPermalink = paths.RelPermalink(s.PathSpec)
 			permalink = paths.PermalinkForOutputFormat(s.PathSpec, f)
 		}
@@ -77,8 +75,14 @@ func newPagePaths(
 
 	}
 
+	var out page.OutputFormats
+	if !pm.noLink() {
+		out = pageOutputFormats
+	}
+
 	return pagePaths{
-		outputFormats:        pageOutputFormats,
+		outputFormats:        out,
+		firstOutputFormat:    pageOutputFormats[0],
 		targetPaths:          targets,
 		targetPathDescriptor: targetPathDescriptor,
 	}, nil
@@ -86,7 +90,8 @@ func newPagePaths(
 }
 
 type pagePaths struct {
-	outputFormats page.OutputFormats
+	outputFormats     page.OutputFormats
+	firstOutputFormat page.OutputFormat
 
 	targetPaths          map[string]targetPathsHolder
 	targetPathDescriptor page.TargetPathDescriptor
@@ -144,7 +149,7 @@ func createTargetPathDescriptor(s *Site, p page.Page, pm *pageMeta) (page.Target
 	// the permalink configuration values are likely to be redundant, e.g.
 	// naively expanding /category/:slug/ would give /category/categories/ for
 	// the "categories" page.KindTaxonomyTerm.
-	if p.Kind() == page.KindPage || p.Kind() == page.KindTaxonomy {
+	if p.Kind() == page.KindPage || p.Kind() == page.KindTerm {
 		opath, err := d.ResourceSpec.Permalinks.Expand(p.Section(), p)
 		if err != nil {
 			return desc, err

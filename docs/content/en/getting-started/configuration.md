@@ -67,7 +67,7 @@ In addition to using a single site config file, one can use the `configDir` dire
 
 Considering the structure above, when running `hugo --environment staging`, Hugo will use every settings from `config/_default` and merge `staging`'s on top of those.
 {{% note %}}
-Default environments are __development__ with `hugo serve` and __production__ with `hugo`.
+Default environments are __development__ with `hugo server` and __production__ with `hugo`.
 {{%/ note %}}
 ## All Configuration Settings
 
@@ -85,7 +85,10 @@ baseURL
 : Hostname (and path) to the root, e.g. https://bep.is/
 
 blackfriday
-: See [Configure Blackfriday](/getting-started/configuration/#configure-blackfriday)
+: See [Configure Blackfriday](/getting-started/configuration-markup#blackfriday)
+
+build
+: See [Configure Build](#configure-build)
 
 buildDrafts (false)
 : Include drafts when building.
@@ -121,7 +124,7 @@ disableHugoGeneratorInject (false)
 : Hugo will, by default, inject a generator meta tag in the HTML head on the _home page only_. You can turn it off, but we would really appreciate if you don't, as this is a good way to watch Hugo's popularity on the rise.
 
 disableKinds ([])
-: Enable disabling of all pages of the specified *Kinds*. Allowed values in this list: `"page"`, `"home"`, `"section"`, `"taxonomy"`, `"taxonomyTerm"`, `"RSS"`, `"sitemap"`, `"robotsTXT"`, `"404"`.
+: Enable disabling of all pages of the specified *Kinds*. Allowed values in this list: `"page"`, `"home"`, `"section"`, `"taxonomy"`, `"term"`, `"RSS"`, `"sitemap"`, `"robotsTXT"`, `"404"`.
 
 disableLiveReload (false)
 : Disable automatic live reloading of browser window.
@@ -135,7 +138,7 @@ enableEmoji (false)
 enableGitInfo (false)
 : Enable `.GitInfo` object for each page (if the Hugo site is versioned by Git). This will then update the `Lastmod` parameter for each page using the last git commit date for that content file.
 
-enableInlineShortcodes
+enableInlineShortcodes (false)
 : Enable inline shortcode support. See [Inline Shortcodes](/templates/shortcode-templates/#inline-shortcodes).
 
 enableMissingTranslationPlaceholders (false)
@@ -189,6 +192,9 @@ markup
 
 menu
 : See [Add Non-content Entries to a Menu](/content-management/menus/#add-non-content-entries-to-a-menu).
+
+minify
+: See [Configure Minify](#configure-minify)
 
 module
 : Module config see [Module Config](/hugo-modules/configuration/).{{< new-in "0.56.0" >}}
@@ -287,6 +293,81 @@ which shows output like
 enableemoji: true
 ```
 {{% /note %}}
+
+## Configure Build
+
+{{< new-in "0.66.0" >}}
+
+The `build` configuration section contains global build-related configuration options.
+
+{{< code-toggle file="config">}}
+[build]
+useResourceCacheWhen="fallback"
+writeStats = false
+noJSConfigInAssets = false
+{{< /code-toggle >}}
+
+
+useResourceCacheWhen
+: When to use the cached resources in `/resources/_gen` for PostCSS and ToCSS. Valid values are `never`, `always` and `fallback`. The last value means that the cache will be tried if PostCSS/extended version is not available.
+
+writeStats {{< new-in "0.69.0" >}}
+: When enabled, a file named `hugo_stats.json` will be written to your project root with some aggregated data about the build, e.g. list of HTML entities published to be used to do [CSS pruning](/hugo-pipes/postprocess/#css-purging-with-postcss). If you're only using this for the production build, you should consider placing it below [config/production](/getting-started/configuration/#configuration-directory). It's also worth mentioning that, due to the nature of the partial server builds, new HTML entities will be added when you add or change them while the server is running, but the old values will not be removed until you restart the server or run a regular `hugo` build.
+
+noJSConfigInAssets {{< new-in "0.78.0" >}}
+: Turn off writing a `jsconfig.js` into your `/assets` folder with mapping of imports from running [js.Build](https://gohugo.io/hugo-pipes/js). This file is intended to help with intellisense/navigation inside code editors such as [VS Code](https://code.visualstudio.com/). Note that if you do not use `js.Build`, no file will be written.
+
+## Configure Server
+
+{{< new-in "0.67.0" >}}
+
+This is only relevant when running `hugo server`, and it allows to set HTTP headers during development, which allows you to test out your Content Security Policy and similar. The configuration format matches [Netlify's](https://docs.netlify.com/routing/headers/#syntax-for-the-netlify-configuration-file) with slighly more powerful [Glob matching](https://github.com/gobwas/glob):
+
+
+{{< code-toggle file="config">}}
+[server]
+[[server.headers]]
+for = "/**.html"
+
+[server.headers.values]
+X-Frame-Options = "DENY"
+X-XSS-Protection = "1; mode=block"
+X-Content-Type-Options = "nosniff"
+Referrer-Policy = "strict-origin-when-cross-origin"
+Content-Security-Policy = "script-src localhost:1313"
+{{< /code-toggle >}}
+
+Since this is is "development only", it may make sense to put it below the `development` environment:
+
+
+{{< code-toggle file="config/development/server">}}
+[[headers]]
+for = "/**.html"
+
+[headers.values]
+X-Frame-Options = "DENY"
+X-XSS-Protection = "1; mode=block"
+X-Content-Type-Options = "nosniff"
+Referrer-Policy = "strict-origin-when-cross-origin"
+Content-Security-Policy = "script-src localhost:1313"
+{{< /code-toggle >}}
+
+
+{{< new-in "0.72.0" >}}
+
+You can also specify simple redirects rules for the server. The syntax is again similar to Netlify's. 
+
+Note that a `status` code of 200 will trigger a [URL rewrite](https://docs.netlify.com/routing/redirects/rewrites-proxies/), which is what you want in SPA situations, e.g:
+
+{{< code-toggle file="config/development/server">}}
+[[redirects]]
+from = "/myspa/**"
+to = "/myspa/"
+status = 200
+force = false
+{{< /code-toggle >}}
+
+{{< new-in "0.76.0" >}} Setting `force=true` will make a redirect even if there is existing content in the path. Note that before Hugo 0.76  `force` was the default behaviour, but this is inline with how Netlify does it.
 
 ## Configure Title Case
 
@@ -425,11 +506,19 @@ The above will try first to extract the value for `.Date` from the filename, the
 
 Hugo v0.20 introduced the ability to render your content to multiple output formats (e.g., to JSON, AMP html, or CSV). See [Output Formats][] for information on how to add these values to your Hugo project's configuration file.
 
+## Configure Minify
+
+{{< new-in "0.68.0" >}}
+
+Default configuration:
+
+{{< code-toggle config="minify" />}}
+
 ## Configure File Caches
 
 Since Hugo 0.52 you can configure more than just the `cacheDir`. This is the default configuration:
 
-```toml
+{{< code-toggle >}}
 [caches]
 [caches.getjson]
 dir = ":cacheDir/:project"
@@ -446,9 +535,9 @@ maxAge = -1
 [caches.modules]
 dir = ":cacheDir/modules"
 maxAge = -1
-```
+{{< /code-toggle >}}
 
-You can override any of these cache setting in your own `config.toml`.
+You can override any of these cache settings in your own `config.toml`.
 
 ### The keywords explained
 

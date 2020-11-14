@@ -32,7 +32,7 @@ func newPageOutput(
 	ft, found := pp.targetPaths[f.Name]
 	if !found {
 		// Link to the main output format
-		ft = pp.targetPaths[pp.OutputFormats()[0].Format.Name]
+		ft = pp.targetPaths[pp.firstOutputFormat.Format.Name]
 	}
 	targetPathsProvider = ft
 	linksProvider = ft
@@ -96,24 +96,28 @@ func (o *pageOutput) initRenderHooks() error {
 		return nil
 	}
 
-	ps := o.cp.p
+	var initErr error
 
-	c := ps.getContentConverter()
-	if c == nil || !c.Supports(converter.FeatureRenderHooks) {
-		return nil
-	}
+	o.cp.renderHooks.init.Do(func() {
+		ps := o.cp.p
 
-	h, err := ps.createRenderHooks(o.f)
-	if err != nil {
-		return err
-	}
-	if h == nil {
-		return nil
-	}
+		c := ps.getContentConverter()
+		if c == nil || !c.Supports(converter.FeatureRenderHooks) {
+			return
+		}
 
-	o.cp.renderHooks = h
+		h, err := ps.createRenderHooks(o.f)
+		if err != nil {
+			initErr = err
+		}
+		if h == nil {
+			return
+		}
 
-	return nil
+		o.cp.renderHooks.hooks = h
+	})
+
+	return initErr
 
 }
 

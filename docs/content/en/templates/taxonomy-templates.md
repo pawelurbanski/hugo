@@ -158,7 +158,11 @@ Hugo uses both `date` and `weight` to order content within taxonomies.
 
 Each piece of content in Hugo can optionally be assigned a date. It can also be assigned a weight for each taxonomy it is assigned to.
 
-When iterating over content within taxonomies, the default sort is the same as that used for [section and list pages]() first by weight then by date. This means that if the weights for two pieces of content are the same, than the more recent content will be displayed first. The default weight for any piece of content is 0.
+When iterating over content within taxonomies, the default sort is the same as that used for section and list pages: first by weight, then by date. This means that if the weights for two pieces of content are the same, then the more recent content will be displayed first.
+
+The default weight for any piece of content is 0. Zero means "does not have a weight", not "has a weight of numerical value zero".
+
+Weights of zero are thus treated specially: if two pages have unequal weights, and one of them is zero, then the zero-weighted page will always appear after the other one, regardless of the other's weight. Zero weights should thus be used with care: for example, if both positive and negative weights are used to extend a sequence in both directions, a zero-weighted page will appear not in the middle of the list, but at the end.
 
 ### Assign Weight
 
@@ -215,6 +219,18 @@ Within your content templates, you may wish to display the taxonomies that piece
 Because we are leveraging the front matter system to define taxonomies for content, the taxonomies assigned to each content piece are located in the usual place (i.e., `.Params.<TAXONOMYPLURAL>`).
 
 ### Example: List Tags in a Single Page Template
+
+{{< new-in "0.65.0" >}}
+
+```go-html-template
+<ul>
+    {{ range (.GetTerms "tags") }}
+        <li><a href="{{ .Permalink }}">{{ .LinkTitle }}</a></li>
+   {{ end }}
+</ul>
+```
+
+Before Hugo 0.65.0 you needed to do something like this:
 
 ```go-html-template
 {{ $taxo := "tags" }} <!-- Use the plural form here -->

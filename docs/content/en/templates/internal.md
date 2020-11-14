@@ -152,7 +152,7 @@ Various optional metadata can also be set:
 - The first 6 `tags` on the page are used for the tags metadata.
 - The `series` taxonomy is used to specify related "see also" pages by placing them in the same series.
 
-If using YouTube this will produce a og:video tag like `<meta property="og:video" content="url">`. If using a YouTube link make sure this is in **https://www.youtube.com/v/NlXVWtgLNjY** not __https://www.youtube.com/watch?v=NlXVWtgLNjY__
+If using YouTube this will produce a og:video tag like `<meta property="og:video" content="url">`. Use the `https://youtu.be/<id>` format with YouTube videos (example: `https://youtu.be/qtIqKaDlqXo`).
 
 ### Use the Open Graph Template
 
@@ -184,7 +184,7 @@ images = ["post-cover.png"]
 {{</ code-toggle >}}
 
 If `images` aren't specified in the page front-matter, then hugo searches for [image page resources](/content-management/image-processing/) with `feature`, `cover`, or `thumbnail` in their name.
-If no image resources with those names are found, the images defined in the [site config](getting-started/configuration/) are used instead.
+If no image resources with those names are found, the images defined in the [site config](/getting-started/configuration/) are used instead.
 If no images are found at all, then an image-less Twitter `summary` card is used instead of `summary_large_image`.
 
 Hugo uses the page title and description for the card's title and description fields. The page summary is used if no description is given.

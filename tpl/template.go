@@ -29,10 +29,7 @@ type TemplateManager interface {
 	TemplateHandler
 	TemplateFuncGetter
 	AddTemplate(name, tpl string) error
-	AddLateTemplate(name, tpl string) error
-	LoadTemplates(prefix string) error
-
-	RebuildClone()
+	MarkReady() error
 }
 
 // TemplateVariants describes the possible variants of a template.
@@ -52,6 +49,8 @@ type TemplateFinder interface {
 type TemplateHandler interface {
 	TemplateFinder
 	Execute(t Template, wr io.Writer, data interface{}) error
+	LookupLayout(d output.LayoutDescriptor, f output.Format) (Template, bool, error)
+	HasTemplate(name string) bool
 }
 
 type TemplateLookup interface {
@@ -69,6 +68,7 @@ type TemplateLookupVariant interface {
 	// We are currently only interested in output formats, so we should improve
 	// this for speed.
 	LookupVariant(name string, variants TemplateVariants) (Template, bool, bool)
+	LookupVariants(name string) []Template
 }
 
 // Template is the common interface between text/template and html/template.
@@ -103,6 +103,12 @@ type templateInfo struct {
 type templateInfoManager struct {
 	Template
 	InfoManager
+}
+
+// TemplatesProvider as implemented by deps.Deps.
+type TemplatesProvider interface {
+	Tmpl() TemplateHandler
+	TextTmpl() TemplateParseFinder
 }
 
 // WithInfo wraps the info in a template.

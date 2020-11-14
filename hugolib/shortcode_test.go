@@ -18,7 +18,7 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/gohugoio/hugo/markup/asciidoc"
+	"github.com/gohugoio/hugo/markup/asciidocext"
 	"github.com/gohugoio/hugo/markup/rst"
 
 	"github.com/spf13/viper"
@@ -552,7 +552,7 @@ title: "Foo"
 
 	temp := tests[:0]
 	for _, test := range tests {
-		if strings.HasSuffix(test.contentPath, ".ad") && !asciidoc.Supports() {
+		if strings.HasSuffix(test.contentPath, ".ad") && !asciidocext.Supports() {
 			t.Log("Skip Asciidoc test case as no Asciidoc present.")
 			continue
 		} else if strings.HasSuffix(test.contentPath, ".rst") && !rst.Supports() {
@@ -626,7 +626,7 @@ baseURL = "http://example.com/blog"
 
 paginate = 1
 
-disableKinds = ["section", "taxonomy", "taxonomyTerm", "RSS", "sitemap", "robotsTXT", "404"]
+disableKinds = ["section", "term", "taxonomy", "RSS", "sitemap", "robotsTXT", "404"]
 
 [outputs]
 home = [ "HTML", "AMP", "Calendar" ]
@@ -1136,7 +1136,7 @@ TOC: {{ .TableOfContents }}
 					"NEW INLINE:  W1: [1 2 3 4 5]",
 					"INLINE IN INNER: Inner: W2: [1 2 3 4]",
 					"REUSED INLINE IN INNER: Inner: W1: [1 2 3]",
-					`<li><a href="#markdown-delimiter-hugo-rocks">MARKDOWN DELIMITER: Hugo Rocks!</a></li>`,
+					`<li><a href="#markdown-delimiter-hugo-rocks">MARKDOWN DELIMITER: <strong>Hugo Rocks!</strong></a></li>`,
 				}
 
 				if enableInlineShortcodes {
@@ -1314,5 +1314,25 @@ title: "Hugo Rocks!"
 
 		})
 	}
+
+}
+
+// https://github.com/gohugoio/hugo/issues/6857
+func TestShortcodeNoInner(t *testing.T) {
+	t.Parallel()
+
+	b := newTestSitesBuilder(t)
+
+	b.WithContent("page.md", `---
+title: "No Inner!"
+---
+{{< noinner >}}{{< /noinner >}}
+
+
+`).WithTemplatesAdded(
+		"layouts/shortcodes/noinner.html", `No inner here.`)
+
+	err := b.BuildE(BuildCfg{})
+	b.Assert(err.Error(), qt.Contains, `failed to extract shortcode: shortcode "noinner" has no .Inner, yet a closing tag was provided`)
 
 }

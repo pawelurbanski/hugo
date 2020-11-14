@@ -21,7 +21,12 @@ var EmbeddedTemplates = [][2]string{
 	{`_default/robots.txt`, `User-agent: *`},
 	{`_default/rss.xml`, `{{- $pctx := . -}}
 {{- if .IsHome -}}{{ $pctx = .Site }}{{- end -}}
-{{- $pages := $pctx.RegularPages -}}
+{{- $pages := slice -}}
+{{- if or $.IsHome $.IsSection -}}
+{{- $pages = $pctx.RegularPages -}}
+{{- else -}}
+{{- $pages = $pctx.Pages -}}
+{{- end -}}
 {{- $limit := .Site.Config.Services.RSS.Limit -}}
 {{- if ge $limit 1 -}}
 {{- $pages = $pages | first $limit -}}
@@ -38,9 +43,9 @@ var EmbeddedTemplates = [][2]string{
     <webMaster>{{.}}{{ with $.Site.Author.name }} ({{.}}){{end}}</webMaster>{{end}}{{ with .Site.Copyright }}
     <copyright>{{.}}</copyright>{{end}}{{ if not .Date.IsZero }}
     <lastBuildDate>{{ .Date.Format "Mon, 02 Jan 2006 15:04:05 -0700" | safeHTML }}</lastBuildDate>{{ end }}
-    {{ with .OutputFormats.Get "RSS" }}
-	{{ printf "<atom:link href=%q rel=\"self\" type=%q />" .Permalink .MediaType | safeHTML }}
-    {{ end }}
+    {{- with .OutputFormats.Get "RSS" -}}
+    {{ printf "<atom:link href=%q rel=\"self\" type=%q />" .Permalink .MediaType | safeHTML }}
+    {{- end -}}
     {{ range $pages }}
     <item>
       <title>{{ .Title }}</title>
@@ -52,7 +57,8 @@ var EmbeddedTemplates = [][2]string{
     </item>
     {{ end }}
   </channel>
-</rss>`},
+</rss>
+`},
 	{`_default/sitemap.xml`, `{{ printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>" | safeHTML }}
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
@@ -74,17 +80,18 @@ var EmbeddedTemplates = [][2]string{
                 />{{ end }}
   </url>
   {{ end }}
-</urlset>`},
+</urlset>
+`},
 	{`_default/sitemapindex.xml`, `{{ printf "<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>" | safeHTML }}
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-	{{ range . }}
-	<sitemap>
-	   	<loc>{{ .SitemapAbsURL }}</loc>
-		{{ if not .LastChange.IsZero }}
-	   	<lastmod>{{ .LastChange.Format "2006-01-02T15:04:05-07:00" | safeHTML }}</lastmod>
-		{{ end }}
-	</sitemap>
-	{{ end }}
+  {{ range . }}
+  <sitemap>
+    <loc>{{ .SitemapAbsURL }}</loc>
+    {{ if not .LastChange.IsZero }}
+      <lastmod>{{ .LastChange.Format "2006-01-02T15:04:05-07:00" | safeHTML }}</lastmod>
+    {{ end }}
+  </sitemap>
+  {{ end }}
 </sitemapindex>
 `},
 	{`alias.html`, `<!DOCTYPE html><html><head><title>{{ .Permalink }}</title><link rel="canonical" href="{{ .Permalink }}"/><meta name="robots" content="noindex"><meta charset="utf-8" /><meta http-equiv="refresh" content="0; url={{ .Permalink }}" /></head></html>`},
@@ -206,7 +213,7 @@ if (!doNotTrack) {
 {{ end }}
 {{- if not .Lastmod.IsZero }}<meta property="article:modified_time" {{ .Lastmod.Format $iso8601 | printf "content=%q" | safeHTMLAttr }} />{{ end }}
 {{- else }}
-{{- if not .Date.IsZero }}<meta property="og:updated_time" {{ .Date.Format $iso8601 | printf "content=%q" | safeHTMLAttr }} />
+{{- if not .Date.IsZero }}<meta property="og:updated_time" {{ .Lastmod.Format $iso8601 | printf "content=%q" | safeHTMLAttr }} />
 {{- end }}
 {{- end }}{{/* .IsPage */}}
 
@@ -241,43 +248,48 @@ if (!doNotTrack) {
 {{- with .Site.Social.facebook_admin }}<meta property="fb:admins" content="{{ . }}" />{{ end }}
 `},
 	{`pagination.html`, `{{ $pag := $.Paginator }}
-{{ if gt $pag.TotalPages 1 }}
+{{ if gt $pag.TotalPages 1 -}}
 <ul class="pagination">
-    {{ with $pag.First }}
-    <li class="page-item">
-        <a href="{{ .URL }}" class="page-link" aria-label="First"><span aria-hidden="true">&laquo;&laquo;</span></a>
-    </li>
-    {{ end }}
-    <li class="page-item{{ if not $pag.HasPrev }} disabled{{ end }}">
+  {{ with $pag.First -}}
+  <li class="page-item">
+    <a href="{{ .URL }}" class="page-link" aria-label="First"><span aria-hidden="true">&laquo;&laquo;</span></a>
+  </li>
+  {{ end -}}
+  <li class="page-item{{ if not $pag.HasPrev }} disabled{{ end }}">
     <a {{ if $pag.HasPrev }}href="{{ $pag.Prev.URL }}"{{ end }} class="page-link" aria-label="Previous"><span aria-hidden="true">&laquo;</span></a>
-    </li>
-    {{ $ellipsed := false }}
-    {{ $shouldEllipse := false }}
-    {{ range $pag.Pagers }}
-    {{ $right := sub .TotalPages .PageNumber }}
-    {{ $showNumber := or (le .PageNumber 3) (eq $right 0) }}
-    {{ $showNumber := or $showNumber (and (gt .PageNumber (sub $pag.PageNumber 2)) (lt .PageNumber (add $pag.PageNumber 2)))  }}
-    {{ if $showNumber }}
-        {{ $ellipsed = false }}
-        {{ $shouldEllipse = false }}
-    {{ else }}
-        {{ $shouldEllipse = not $ellipsed }}
-        {{ $ellipsed = true }}
-    {{ end }}
-    {{ if $showNumber }}
-    <li class="page-item{{ if eq . $pag }} active{{ end }}"><a class="page-link" href="{{ .URL }}">{{ .PageNumber }}</a></li>
-    {{ else if $shouldEllipse }}
-    <li class="page-item disabled"><span aria-hidden="true">&nbsp;&hellip;&nbsp;</span></li>
-    {{ end }}
-    {{ end }}
-    <li class="page-item{{ if not $pag.HasNext }} disabled{{ end }}">
+  </li>
+  {{- $ellipsed := false -}}
+  {{- $shouldEllipse := false -}}
+  {{- range $pag.Pagers -}}
+  {{- $right := sub .TotalPages .PageNumber -}}
+  {{- $showNumber := or (le .PageNumber 3) (eq $right 0) -}}
+  {{- $showNumber := or $showNumber (le .TotalPages 5) -}}{{/* Issue #7523 */}}
+  {{- $showNumber := or $showNumber (and (gt .PageNumber (sub $pag.PageNumber 2)) (lt .PageNumber (add $pag.PageNumber 2))) -}}
+  {{- if $showNumber -}}
+    {{- $ellipsed = false -}}
+    {{- $shouldEllipse = false -}}
+  {{- else -}}
+    {{- $shouldEllipse = not $ellipsed -}}
+    {{- $ellipsed = true -}}
+  {{- end -}}
+  {{- if $showNumber }}
+  <li class="page-item{{ if eq . $pag }} active{{ end }}">
+    <a class="page-link" href="{{ .URL }}">{{ .PageNumber }}</a>
+  </li>
+  {{- else if $shouldEllipse }}
+  <li class="page-item disabled">
+    <span aria-hidden="true">&nbsp;&hellip;&nbsp;</span>
+  </li>
+  {{- end -}}
+  {{- end }}
+  <li class="page-item{{ if not $pag.HasNext }} disabled{{ end }}">
     <a {{ if $pag.HasNext }}href="{{ $pag.Next.URL }}"{{ end }} class="page-link" aria-label="Next"><span aria-hidden="true">&raquo;</span></a>
-    </li>
-    {{ with $pag.Last }}
-    <li class="page-item">
-        <a href="{{ .URL }}" class="page-link" aria-label="Last"><span aria-hidden="true">&raquo;&raquo;</span></a>
-    </li>
-    {{ end }}
+  </li>
+  {{- with $pag.Last }}
+  <li class="page-item">
+    <a href="{{ .URL }}" class="page-link" aria-label="Last"><span aria-hidden="true">&raquo;&raquo;</span></a>
+  </li>
+  {{- end }}
 </ul>
 {{ end }}
 `},
@@ -285,8 +297,8 @@ if (!doNotTrack) {
 <meta itemprop="description" content="{{ with .Description }}{{ . }}{{ else }}{{if .IsPage}}{{ .Summary }}{{ else }}{{ with .Site.Params.description }}{{ . }}{{ end }}{{ end }}{{ end }}">
 
 {{- if .IsPage }}{{ $ISO8601 := "2006-01-02T15:04:05-07:00" }}{{ if not .PublishDate.IsZero }}
-<meta itemprop="datePublished" content="{{ .PublishDate.Format $ISO8601 | safeHTML }}" />{{ end }}
-{{ if not .Lastmod.IsZero }}<meta itemprop="dateModified" content="{{ .Lastmod.Format $ISO8601 | safeHTML }}" />{{ end }}
+<meta itemprop="datePublished" {{ .PublishDate.Format $ISO8601 | printf "content=%q" | safeHTMLAttr }} />{{ end }}
+{{ if not .Lastmod.IsZero }}<meta itemprop="dateModified" {{ .Lastmod.Format $ISO8601 | printf "content=%q" | safeHTMLAttr }} />{{ end }}
 <meta itemprop="wordCount" content="{{ .WordCount }}">
 {{ with $.Params.images }}{{ range first 6 . -}}
 <meta itemprop="image" content="{{ . | absURL }}">
@@ -303,7 +315,8 @@ if (!doNotTrack) {
 
 <!-- Output all taxonomies as schema.org keywords -->
 <meta itemprop="keywords" content="{{ if .IsPage}}{{ range $index, $tag := .Params.tags }}{{ $tag }},{{ end }}{{ else }}{{ range $plural, $terms := .Site.Taxonomies }}{{ range $term, $val := $terms }}{{ printf "%s," $term }}{{ end }}{{ end }}{{ end }}" />
-{{- end }}`},
+{{- end }}
+`},
 	{`shortcodes/__h_simple_assets.html`, `{{ define "__h_simple_css" }}{{/* These template definitions are global. */}}
 {{- if not (.Page.Scratch.Get "__h_simple_css") -}}
 {{/* Only include once */}}
@@ -484,16 +497,19 @@ if (!doNotTrack) {
 {{ template "_internal/shortcodes/vimeo_simple.html" . }}
 {{- else -}}
 {{ if .IsNamedParams }}<div {{ if .Get "class" }}class="{{ .Get "class" }}"{{ else }}style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;"{{ end }}>
-  <iframe src="https://player.vimeo.com/video/{{ .Get "id" }}" {{ if not (.Get "class") }}style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" {{ end }}{{ if .Get "title"}}title="{{ .Get "title" }}"{{ else }}title="vimeo video"{{ end }} webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
- </div>{{ else }}
+  <iframe src="https://player.vimeo.com/video/{{ .Get "id" }}{{- if $pc.EnableDNT -}}?dnt=1{{- end -}}" {{ if not (.Get "class") }}style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" {{ end }}{{ if .Get "title"}}title="{{ .Get "title" }}"{{ else }}title="vimeo video"{{ end }} webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
+</div>{{ else }}
 <div {{ if gt (len .Params) 1 }}class="{{ .Get 1 }}"{{ else }}style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;"{{ end }}>
-  <iframe src="https://player.vimeo.com/video/{{ .Get 0 }}" {{ if len .Params | eq 1 }}style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" {{ end }}{{ if len .Params | eq 3 }}title="{{ .Get 2 }}"{{ else }}title="vimeo video"{{ end }} webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
- </div>
+  <iframe src="https://player.vimeo.com/video/{{ .Get 0 }}{{- if $pc.EnableDNT -}}?dnt=1{{- end -}}" {{ if len .Params | eq 1 }}style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border:0;" {{ end }}{{ if len .Params | eq 3 }}title="{{ .Get 2 }}"{{ else }}title="vimeo video"{{ end }} webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
+</div>
 {{ end }}
 {{- end -}}
 {{- end -}}`},
-	{`shortcodes/vimeo_simple.html`, `{{ $id := .Get "id" | default (.Get 0) }}
-{{- $item := getJSON "https://vimeo.com/api/oembed.json?url=https://vimeo.com/" $id -}}
+	{`shortcodes/vimeo_simple.html`, `{{- $pc := .Page.Site.Config.Privacy.Vimeo -}}
+{{- if not $pc.Disable -}}
+{{ $id := .Get "id" | default (.Get 0) }}
+{{ $dnt := cond (eq $pc.EnableDNT true) "?dnt=1" "" }}
+{{- $item := getJSON (print "https://vimeo.com/api/oembed.json?url=https://vimeo.com/" $id $dnt) -}}
 {{ $class := .Get "class" | default (.Get 1) }}
 {{ $hasClass := $class }}
 {{ $class := $class | default "__h_video" }}
@@ -510,7 +526,7 @@ if (!doNotTrack) {
 <img src="{{ $thumb }}" srcset="{{ $thumb }} 1x, {{ $original }} 2x" alt="{{ .title }}">
 <div class="play">{{ template "__h_simple_icon_play" $ }}</div></a></div>
 {{- end -}}
-`},
+{{- end -}}`},
 	{`shortcodes/youtube.html`, `{{- $pc := .Page.Site.Config.Privacy.YouTube -}}
 {{- if not $pc.Disable -}}
 {{- $ytHost := cond $pc.PrivacyEnhanced  "www.youtube-nocookie.com" "www.youtube.com" -}}
